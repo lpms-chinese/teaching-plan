@@ -3,7 +3,7 @@
 body { margin: 0; }
 .shell { max-width: 1280px; margin: 0 auto; padding: 34px 24px 100px; }
 header { margin-bottom: 22px; }
-.eyebrow { color: #087c68; font-weight: 700; margin: 0 0 6px; }
+.eyebrow { color: #087c68; font-size: 21px; font-weight: 700; margin: 0 0 6px; }
 h1 { margin: 0; font-size: 36px; } h2 { margin: 0 0 16px; font-size: 20px; }
 .card, .week, .note-row { background: white; border: 1px solid #dbe4e1; border-radius: 12px; box-shadow: 0 3px 14px #1231  ; }
 .metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; }
@@ -12,7 +12,7 @@ label { display: grid; gap: 6px; font-size: 15px; font-weight: 700; } input, sel
 .filename { margin: 0; color: #4c5d59; }.filename span { color: #087c68; font-weight: 700; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; } button, .file-button { border: 0; border-radius: 7px; padding: 10px 14px; background: #087c68; color: white; font: inherit; cursor: pointer; } button:disabled { background: #a8b8b3; cursor: not-allowed; }.secondary { background: #e6f0ed; color: #075e50; }.danger { background: #fff0f0; color: #a72424; }.file-button input { display: none; }
 .table-guidance { margin: 0 0 9px; color: #39524c; font-size: 16px; }
-.autosave-notice { display: flex; align-items: center; margin: 0; padding: 10px 14px; border: 1px solid #c9cdcc; border-radius: 7px; background: #eef0ef; color: #b3261e; font-weight: 700; }
+.autosave-notice { display: flex; align-items: center; margin: 0; padding: 10px 14px; border: 1px solid #c9cdcc; border-radius: 7px; background: #eef0ef; color: #1d2a37; font-weight: 700; }
 .testing-notice { margin: 10px 0 0; padding: 9px 12px; border-left: 4px solid #d88494; background: #fff0f3; color: #1d2a37; font-size: 15px; font-weight: 700; line-height: 1.5; }
 .version-info { margin: 7px 0 0; color: #60716c; font-size: 14px; }
 .issues { margin: 5px 0 0; }.issue { padding: 4px 8px; margin: 3px 0; border-left: 3px solid #d88494; background: #fff0f3; color: #b3261e; font-size: 14px; }.ok { padding: 5px 8px; background: #e7f7ef; color: #056c45; font-size: 14px; }

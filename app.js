@@ -154,7 +154,12 @@ function renderPlannerTable() {
     const bracket = label.indexOf("（");
     return bracket === -1 ? label : `${label.slice(0, bracket)}<br><span class="header-note">${label.slice(bracket)}</span>`;
   };
-  const teachingHeaders = CATEGORIES.slice(0, 4).map(([key, label]) => `<th class="category-${key}">${headerLabel(label)}</th>`).join("");
+  const teachingHeader = (key, label) => ({
+    writing: "識字／語基<br>／寫作",
+    listening: "聆聽／視訊<br>／說話",
+    literature: "文學<br>文化"
+  }[key] || headerLabel(label));
+  const teachingHeaders = CATEGORIES.slice(0, 4).map(([key, label]) => `<th class="category-${key}">${teachingHeader(key, label)}</th>`).join("");
   const [, , , , assessment, other, values] = CATEGORIES;
   const valuesHeader = `${headerLabel(values[1])}<br><span class="priority-header-note">* 本年度學校關注項目</span>`;
   table.innerHTML = `<colgroup><col style="width:60px"><col style="width:105px"><col style="width:230px"><col style="width:155px"><col style="width:155px"><col style="width:155px"><col style="width:130px"><col style="width:165px"><col style="width:175px"></colgroup><thead><tr><th rowspan="2">循環週</th><th rowspan="2">日期</th><th colspan="4" class="teaching-content-heading">教學內容</th><th rowspan="2" class="category-assessment">${headerLabel(assessment[1])}</th><th rowspan="2" class="category-other">${headerLabel(other[1])}</th><th rowspan="2" class="category-values">${valuesHeader}</th></tr><tr>${teachingHeaders}</tr></thead><tbody></tbody>`;
@@ -338,7 +343,7 @@ function renderNoteRow(entry, index) { const row = document.createElement("tr");
 function escapeHtml(value) { return String(value).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 function escapeAttr(value) { return escapeHtml(value); }
 function chooseLocalTemplate() { return new Promise(resolve => { const input = document.querySelector("#template-file"); input.value = ""; input.onchange = () => resolve(input.files?.[0] || null); input.click(); }); }
-async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立 Word…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; const { exportDocx } = await import("./docx-export.js"); await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載 Word"; } }
+async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立檔案…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; const { exportDocx } = await import("./docx-export.js"); await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載檔案"; } }
 ["year", "semester", "grade", "teacher"].forEach(key => document.querySelector(`#${key}`).oninput = event => { plan.meta[key] = event.target.value; render(); });
 document.querySelector("#add-week").onclick = () => { plan.entries.push(week(0)); render(); };
 document.querySelector("#add-note").onclick = () => { plan.entries.push({ type: "note", note: "" }); render(); };
