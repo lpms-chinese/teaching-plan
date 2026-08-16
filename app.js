@@ -116,11 +116,11 @@ function allIssues() {
   return errors;
 }
 function refreshValidation() {
-  const errors = allIssues(); const issues = document.querySelector("#issues");
-  const visibleErrors = errors.slice(0, 3);
-  const more = errors.length > visibleErrors.length ? `<div class="issue">另有 ${errors.length - visibleErrors.length} 項需要在各循環週內處理。</div>` : "";
-  issues.innerHTML = errors.length ? visibleErrors.map(error => `<div class="issue">${escapeHtml(error)}</div>`).join("") + more : '<div class="ok">所有循環週均已填妥並合計 8 節，可以下載。</div>';
-  document.querySelector("#summary").textContent = errors.length ? `尚有 ${errors.length} 項需要處理` : "已通過完整性及 8 節檢核";
+  const issues = document.querySelector("#issues");
+  const incompleteWeeks = plan.entries.filter(entry => entry.type === "week" && total(entry) !== 8);
+  const weekNames = incompleteWeeks.map(entry => `第${entry.week}循環週（${total(entry)}/8節）`).join("、");
+  issues.innerHTML = incompleteWeeks.length ? `<div class="issue">未合計 8 節：${escapeHtml(weekNames)}</div>` : '<div class="ok">所有循環週均已合計 8 節，可以下載。</div>';
+  document.querySelector("#summary").textContent = incompleteWeeks.length ? `尚有 ${incompleteWeeks.length} 個循環週未合計 8 節` : "已通過 8 節檢核";
   document.querySelectorAll("#download-docx").forEach(button => button.disabled = false);
   document.querySelectorAll(".week-row").forEach(row => {
     const entry = plan.entries[Number(row.dataset.entryIndex)];
@@ -212,9 +212,11 @@ function renderCategoryCell(entry, key, label) {
 function renderListeningCell(entry, label) {
   const cell = document.createElement("td"); cell.className = "content-cell listening-cell category-listening";
   const state = listeningState(entry); syncListening(entry, state);
-  const saved = state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening" draggable="true" data-listening-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div>`).join("");
+  const saved = state.notApplicable
+    ? `<div class="saved-assessment not-applicable"><span>不適用</span><button type="button" data-listening-action="restore" title="改回填寫內容">✖</button></div>`
+    : state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening" draggable="true" data-listening-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div>`).join("");
   const draft = state.draft;
-  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="listening-mode" aria-label="${label}類型"><option value="">選擇類型</option>${LISTENING_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="listening-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea><div class="lesson-line"><input class="listening-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${draft.lessons}" /><span>節</span></div><button type="button" class="add-assessment" data-listening-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-listening-action="open" title="新增聆聽／視訊／說話內容">＋</button></div>`;
+  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="listening-mode" aria-label="${label}類型"><option value="">選擇類型</option>${LISTENING_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="listening-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea><div class="lesson-line"><input class="listening-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${draft.lessons}" /><span>節</span></div><button type="button" class="add-assessment" data-listening-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-listening-action="open" title="新增聆聽／視訊／說話內容">＋</button><button class="slash" data-listening-action="slash" title="不適用（0節）">／</button></div>`;
   const update = () => { syncListening(entry, state); save(); refreshValidation(); };
   cell.querySelector(".listening-mode")?.addEventListener("change", event => { state.draft.mode = event.target.value; update(); });
   cell.querySelector(".listening-content")?.addEventListener("input", event => { state.draft.content = event.target.value; update(); });
@@ -230,6 +232,8 @@ function renderListeningCell(entry, label) {
     const control = event.target.closest("[data-listening-action]"); if (!control) return;
     const action = control.dataset.listeningAction;
     if (action === "open") { state.open = true; state.notApplicable = false; render(); return; }
+    if (action === "slash") { state.items = []; state.notApplicable = true; state.open = false; syncListening(entry, state); render(); return; }
+    if (action === "restore") { state.items = []; state.notApplicable = false; state.open = true; syncListening(entry, state); render(); return; }
     if (action === "copy") { const item = state.items[Number(control.dataset.listeningIndex)]; if (item) state.items.push({ ...item }); syncListening(entry, state); render(); return; }
     if (action === "remove") { state.items.splice(Number(control.dataset.listeningIndex), 1); render(); return; }
     if (action === "add") {

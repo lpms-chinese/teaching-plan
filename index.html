@@ -3,16 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>中文科教學進度簡表規劃工具｜純瀏覽器試驗版</title>
+    <title>中文科教學進度簡表規劃工具</title>
     <link rel="stylesheet" href="styles.css?v=20260816s" />
   </head>
   <body>
     <main class="shell">
       <header>
         <p class="eyebrow">九龍婦女福利會李炳紀念學校</p>
-        <h1>中文科教學進度簡表規劃工具（純瀏覽器試驗版）</h1>
+        <h1>中文科教學進度簡表規劃工具</h1>
         <p>每個循環週需合計 <strong>8 節</strong>；「／」代表不適用，不計課節。</p>
-        <p class="browser-export-note">試驗目標：Word 檔由瀏覽器直接建立，不會傳送資料至伺服器。</p>
       </header>
       <section class="metadata card" aria-labelledby="meta-title">
         <h2 id="meta-title">基本資料</h2>
@@ -37,6 +36,6 @@
     <template id="item-template"><div class="lesson-item"><span class="drag-handle" title="拖拉此項到另一個欄目">⠿</span><div class="item-body"><input class="item-text" placeholder="填寫內容" /><div class="lesson-line"><input class="item-lessons" type="number" min="0" step="1" value="1" aria-label="課節數" /><span>節</span><button class="priority" title="本年度學校關注項目">☆</button><button class="remove-item" title="刪除此項">×</button></div><label class="combined">結合<select class="item-combined-with"><option value="">選擇</option><option value="閱讀">閱讀</option><option value="寫作">寫作</option></select>進行</label></div></div></template>
     <input id="template-file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
 <script src="jszip.min.js"></script>
-<script type="module" src="app.js?v=browser-c3"></script>
+<script type="module" src="app.js?v=browser-c4"></script>
   </body>
 </html>
