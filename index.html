@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>中文科教學進度簡表規劃工具｜純瀏覽器試驗版</title>
+    <link rel="stylesheet" href="styles.css?v=20260816s" />
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <p class="eyebrow">九龍婦女福利會李炳紀念學校</p>
+        <h1>中文科教學進度簡表規劃工具（純瀏覽器試驗版）</h1>
+        <p>每個循環週需合計 <strong>8 節</strong>；「／」代表不適用，不計課節。</p>
+        <p class="browser-export-note">試驗目標：Word 檔由瀏覽器直接建立，不會傳送資料至伺服器。</p>
+      </header>
+      <section class="metadata card" aria-labelledby="meta-title">
+        <h2 id="meta-title">基本資料</h2>
+        <label>學年<input id="year" placeholder="例：26-27年" /></label>
+        <label>學期<select id="semester"><option value="">請選擇</option><option>上學期</option><option>下學期</option></select></label>
+        <label>年級<select id="grade"><option value="">請選擇</option><option>一年級</option><option>二年級</option><option>三年級</option><option>四年級</option><option>五年級</option><option>六年級</option></select></label>
+        <label class="teacher-field">教師<input id="teacher" placeholder="例：1A 陳老師、1B 李老師（可自由填寫多位教師）" /></label>
+        <p class="filename">下載檔名：<span id="filename-preview">請先填寫文件資料</span></p>
+      </section>
+      <section class="toolbar">
+        <button id="add-week" class="secondary">＋ 新增循環週</button>
+        <button id="add-note" class="secondary">插入備註列</button>
+        <p class="autosave-notice" role="status">● 已自動儲存在本機瀏覽器</p>
+        <button id="clear" class="danger">清除草稿</button>
+      </section>
+      <section id="entries" aria-label="循環週填寫表"></section>
+      <footer class="export-bar">
+        <div class="export-status"><div id="summary">正在檢查資料…</div><section id="issues" class="issues" aria-live="polite"></section></div>
+        <div><button id="download-docx" disabled>下載 Word</button></div>
+      </footer>
+    </main>
+    <template id="item-template"><div class="lesson-item"><span class="drag-handle" title="拖拉此項到另一個欄目">⠿</span><div class="item-body"><input class="item-text" placeholder="填寫內容" /><div class="lesson-line"><input class="item-lessons" type="number" min="0" step="1" value="1" aria-label="課節數" /><span>節</span><button class="priority" title="本年度學校關注項目">☆</button><button class="remove-item" title="刪除此項">×</button></div><label class="combined">結合<select class="item-combined-with"><option value="">選擇</option><option value="閱讀">閱讀</option><option value="寫作">寫作</option></select>進行</label></div></div></template>
+    <input id="template-file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+<script src="vendor/jszip.min.js"></script>
+<script type="module" src="app.js?v=browser-c2"></script>
+  </body>
+</html>
