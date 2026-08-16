@@ -1,5 +1,3 @@
-import { exportDocx } from "./docx-export.js";
-
 const CATEGORIES = [
   ["reading", "閱讀（單元／課次／銜接課程／童書教學）"], ["writing", "識字／語基／寫作"],
   ["listening", "聆聽／視訊／說話"], ["literature", "文學文化"], ["assessment", "默書／評估"],
@@ -336,7 +334,7 @@ function renderNoteRow(entry, index) { const row = document.createElement("tr");
 function escapeHtml(value) { return String(value).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 function escapeAttr(value) { return escapeHtml(value); }
 function chooseLocalTemplate() { return new Promise(resolve => { const input = document.querySelector("#template-file"); input.value = ""; input.onchange = () => resolve(input.files?.[0] || null); input.click(); }); }
-async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立 Word…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載 Word"; } }
+async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立 Word…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; const { exportDocx } = await import("./docx-export.js"); await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載 Word"; } }
 ["year", "semester", "grade", "teacher"].forEach(key => document.querySelector(`#${key}`).oninput = event => { plan.meta[key] = event.target.value; render(); });
 document.querySelector("#add-week").onclick = () => { plan.entries.push(week(0)); render(); };
 document.querySelector("#add-note").onclick = () => { plan.entries.push({ type: "note", note: "" }); render(); };
