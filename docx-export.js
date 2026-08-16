@@ -107,8 +107,16 @@ function removeOldTemplateNote(document) {
   Array.from(document.getElementsByTagName("mc:AlternateContent")).forEach(node => { if (text(node).includes("要在新年假前完成")) node.remove(); });
 }
 
+function replaceRepeatedColumnHeader(document) {
+  Array.from(document.getElementsByTagNameNS(W_NS, "p")).forEach(paragraph => {
+    const compact = text(paragraph).replace(/[\s／/]/g, "");
+    if (compact === "識字寫作") replaceParagraph(document, paragraph, "識字／語基／寫作", true);
+  });
+}
+
 function fillTemplate(document, header, plan) {
   removeOldTemplateNote(document);
+  replaceRepeatedColumnHeader(document);
   const body = document.getElementsByTagNameNS(W_NS, "body")[0];
   const firstParagraph = direct(body, "p")[0];
   if (firstParagraph) replaceParagraph(document, firstParagraph, `年級：${plan.meta.grade || ""}\t\t\t\t教師：${plan.meta.teacher || ""}`);
