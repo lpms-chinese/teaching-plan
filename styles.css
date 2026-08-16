@@ -46,3 +46,6 @@ label { display: grid; gap: 6px; font-size: 15px; font-weight: 700; } input, sel
 .draggable-assessment:hover, .draggable-standard:hover, .draggable-listening:hover, .draggable-other:hover { background: #dff1ea; box-shadow: 0 0 0 1px #66a797; }
 .draggable-assessment:active, .draggable-standard:active, .draggable-listening:active, .draggable-other:active { cursor: grabbing; }
 .draggable-assessment.dragging, .draggable-standard.dragging, .draggable-listening.dragging, .draggable-other.dragging { opacity: .45; }
+.recommended-toggle { display: flex; align-items: center; gap: 4px; color: #334540; font-family: "PingFang HK", sans-serif; font-size: 11px; }
+.recommended-toggle input { width: 14px; height: 14px; margin: 0; }
+.recommended-title { display: inline-block; max-width: 100%; padding: 0 3px; border: 1px solid #64756f; border-radius: 1px; line-height: 1.35; vertical-align: baseline; }

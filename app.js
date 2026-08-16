@@ -3,6 +3,7 @@ const CATEGORIES = [
   ["listening", "聆聽／視訊／說話"], ["literature", "文學文化"], ["assessment", "默書／評估"],
   ["other", "其他（廣閱／閱讀策略／自學套件）"], ["values", "配合國家安全教育／價值觀教育"],
 ];
+const RECOMMENDED_CATEGORIES = new Set(["reading", "literature"]);
 const LISTENING_OPTIONS = ["聆練", "視訊", "說練", "其他"];
 const OTHER_OPTIONS = ["廣閱", "閱讀策略", "自學套件", "派發溫習套件", "其他"];
 const OTHER_NO_LESSON_OPTIONS = ["自學套件", "派發溫習套件"];
@@ -180,19 +181,22 @@ function renderWeekRow(entry, index) {
 function renderCategoryCell(entry, key, label) {
   const cell = document.createElement("td"); cell.className = `content-cell standard-cell category-${key}`;
   entry.categoryForms ||= {};
-  const form = entry.categoryForms[key] ||= { open: false, draft: { text: "", lessons: 1, combinedWith: "" } };
-  form.draft ||= { text: "", lessons: 1, combinedWith: "" };
+  const form = entry.categoryForms[key] ||= { open: false, draft: { text: "", lessons: 1, combinedWith: "", recommended: false } };
+  form.draft ||= { text: "", lessons: 1, combinedWith: "", recommended: false };
+  if (form.draft.recommended === undefined) form.draft.recommended = false;
   if (form.draft.combinedWith === undefined) form.draft.combinedWith = form.draft.combined ? "閱讀" : "";
   const notApplicable = entry.categories[key].some(item => item.text === "／");
   const items = entry.categories[key].filter(item => item.text !== "／");
-  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard" draggable="true" data-standard-index="${index}"><span>${escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div>`).join("");
+  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard" draggable="true" data-standard-index="${index}"><span>${item.recommended ? `<span class="recommended-title">${escapeHtml(item.text)}</span>` : escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div>`).join("");
   const combineField = Number(form.draft.lessons) === 0 ? `<label class="combined">結合<select class="standard-combined-with" aria-label="${label}結合方式"><option value="">選擇</option><option value="閱讀" ${form.draft.combinedWith === "閱讀" ? "selected" : ""}>閱讀</option><option value="寫作" ${form.draft.combinedWith === "寫作" ? "selected" : ""}>寫作</option></select>進行</label>` : "";
-  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${form.open ? `<div class="standard-form"><textarea class="standard-text" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(form.draft.text)}</textarea><div class="lesson-line"><input class="standard-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${form.draft.lessons}" /><span>節</span></div>${combineField}<button type="button" class="add-assessment" data-standard-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-standard-action="open" title="新增內容">＋</button><button class="slash" data-standard-action="slash" title="不適用（0節）">／</button></div>`;
-  const updateDraft = () => { form.draft.text = cell.querySelector(".standard-text")?.value || ""; form.draft.lessons = Math.max(0, Number(cell.querySelector(".standard-lessons")?.value || 0)); const select = cell.querySelector(".standard-combined-with"); form.draft.combinedWith = select ? select.value : ""; save(); };
+  const recommendedField = RECOMMENDED_CATEGORIES.has(key) ? `<label class="recommended-toggle"><input class="standard-recommended" type="checkbox" ${form.draft.recommended ? "checked" : ""}> 課程建議篇章</label>` : "";
+  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${form.open ? `<div class="standard-form"><textarea class="standard-text" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(form.draft.text)}</textarea><div class="lesson-line"><input class="standard-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${form.draft.lessons}" /><span>節</span></div>${combineField}${recommendedField}<button type="button" class="add-assessment" data-standard-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-standard-action="open" title="新增內容">＋</button><button class="slash" data-standard-action="slash" title="不適用（0節）">／</button></div>`;
+  const updateDraft = () => { form.draft.text = cell.querySelector(".standard-text")?.value || ""; form.draft.lessons = Math.max(0, Number(cell.querySelector(".standard-lessons")?.value || 0)); const select = cell.querySelector(".standard-combined-with"); form.draft.combinedWith = select ? select.value : ""; form.draft.recommended = !!cell.querySelector(".standard-recommended")?.checked; save(); };
   cell.querySelector(".standard-text")?.addEventListener("input", updateDraft);
   cell.querySelector(".standard-lessons")?.addEventListener("input", updateDraft);
   cell.querySelector(".standard-lessons")?.addEventListener("change", () => { updateDraft(); render(); });
   cell.querySelector(".standard-combined-with")?.addEventListener("change", () => { updateDraft(); render(); });
+  cell.querySelector(".standard-recommended")?.addEventListener("change", updateDraft);
   cell.querySelectorAll(".draggable-standard").forEach(item => {
     item.ondragstart = () => { dragState = { entry, key, index: Number(item.dataset.standardIndex) }; item.classList.add("dragging"); };
     item.ondragend = () => { dragState = null; item.classList.remove("dragging"); };
@@ -210,7 +214,7 @@ function renderCategoryCell(entry, key, label) {
     if (action === "restore") { entry.categories[key] = []; form.open = true; render(); return; }
     if (action === "copy") { const item = entry.categories[key][Number(control.dataset.standardIndex)]; if (item) entry.categories[key].push({ ...item }); render(); return; }
     if (action === "remove") { entry.categories[key].splice(Number(control.dataset.standardIndex), 1); render(); return; }
-    if (action === "add") { const text = cell.querySelector(".standard-text").value.trim(); if (!text) { alert("請先填寫內容。"); return; } const lessons = Math.max(0, Number(cell.querySelector(".standard-lessons").value)); const combinedWithValue = lessons === 0 ? cell.querySelector(".standard-combined-with")?.value || "" : ""; entry.categories[key].push({ text, lessons, combined: !!combinedWithValue, combinedWith: combinedWithValue }); form.draft = { text: "", lessons: 1, combinedWith: "" }; form.open = false; render(); }
+    if (action === "add") { const text = cell.querySelector(".standard-text").value.trim(); if (!text) { alert("請先填寫內容。"); return; } const lessons = Math.max(0, Number(cell.querySelector(".standard-lessons").value)); const combinedWithValue = lessons === 0 ? cell.querySelector(".standard-combined-with")?.value || "" : ""; const recommended = RECOMMENDED_CATEGORIES.has(key) && !!cell.querySelector(".standard-recommended")?.checked; entry.categories[key].push({ text, lessons, combined: !!combinedWithValue, combinedWith: combinedWithValue, recommended }); form.draft = { text: "", lessons: 1, combinedWith: "", recommended: false }; form.open = false; render(); }
   });
   return cell;
 }
