@@ -46,6 +46,65 @@ function setCell(document, cell, value, center = false) {
   cell.append(replacement);
 }
 
+function appendRun(document, paragraph, runProperties, value, boxed = false) {
+  const run = w(document, "r");
+  if (runProperties) run.append(runProperties.cloneNode(true));
+  if (boxed) {
+    const properties = direct(run, "rPr")[0] || run.insertBefore(w(document, "rPr"), run.firstChild);
+    const border = w(document, "bdr");
+    border.setAttributeNS(W_NS, "w:val", "single");
+    border.setAttributeNS(W_NS, "w:sz", "4");
+    border.setAttributeNS(W_NS, "w:space", "1");
+    border.setAttributeNS(W_NS, "w:color", "64756F");
+    properties.append(border);
+  }
+  const valueNode = w(document, "t");
+  if (/^\s|\s$/.test(value)) valueNode.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+  valueNode.textContent = value;
+  run.append(valueNode); paragraph.append(run);
+}
+
+function appendBreak(document, paragraph, runProperties) {
+  const breakRun = w(document, "r");
+  if (runProperties) breakRun.append(runProperties.cloneNode(true));
+  breakRun.append(w(document, "br"));
+  paragraph.append(breakRun);
+}
+
+function appendMultilineText(document, paragraph, runProperties, value, boxed = false) {
+  String(value || "").split("\n").forEach((line, index, lines) => {
+    appendRun(document, paragraph, runProperties, line, boxed);
+    if (index < lines.length - 1) appendBreak(document, paragraph, runProperties);
+  });
+}
+
+function createRecommendedContentParagraph(document, sourceCell, items) {
+  const sourceParagraph = direct(sourceCell, "p")[0];
+  const paragraph = w(document, "p");
+  const properties = sourceParagraph && cloneChild(sourceParagraph, "pPr");
+  if (properties) paragraph.append(properties);
+  const sourceRun = sourceParagraph && direct(sourceParagraph, "r")[0];
+  const runProperties = sourceRun && cloneChild(sourceRun, "rPr");
+  const records = items?.length ? items : [{ text: "／", lessons: 0 }];
+  records.forEach((item, index) => {
+    const value = String(item.text || "").trim() || "／";
+    if (value === "／") appendRun(document, paragraph, runProperties, "／");
+    else {
+      appendMultilineText(document, paragraph, runProperties, value, !!item.recommended);
+      appendBreak(document, paragraph, runProperties);
+      appendMultilineText(document, paragraph, runProperties, item.combined || item.combinedWith ? "（結合閱讀／寫作進行）" : `（${Number(item.lessons || 0)}節）`);
+    }
+    if (index < records.length - 1) { appendBreak(document, paragraph, runProperties); appendBreak(document, paragraph, runProperties); }
+  });
+  return paragraph;
+}
+
+function setRecommendedContentCell(document, cell, items) {
+  const replacement = createRecommendedContentParagraph(document, cell, items);
+  direct(cell, "p").forEach(paragraph => paragraph.remove());
+  cell.append(replacement);
+}
+
 function cellText(items, { showLessons = true, category = "" } = {}) {
   const output = [];
   for (const item of items || []) {
@@ -85,7 +144,11 @@ function writeWeek(document, row, entry, number) {
   if (isEmptyWeek(entry)) { cells.forEach(cell => setCell(document, cell, "")); return; }
   const categories = entry.categories || {};
   const output = [String(number), entry.date || "", cellText(categories.reading), cellText(categories.writing), cellText(categories.listening), cellText(categories.literature), assessmentText(entry), cellText(categories.other, { category: "other" }), cellText(categories.values, { showLessons: false })];
-  cells.forEach((cell, index) => setCell(document, cell, output[index] || "", index < 2));
+  cells.forEach((cell, index) => {
+    if (index === 2) setRecommendedContentCell(document, cell, categories.reading);
+    else if (index === 5) setRecommendedContentCell(document, cell, categories.literature);
+    else setCell(document, cell, output[index] || "", index < 2);
+  });
 }
 
 function fullYear(value) {
