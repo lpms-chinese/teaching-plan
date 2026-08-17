@@ -8,9 +8,19 @@ const LISTENING_OPTIONS = ["聆練", "視訊", "說練", "其他"];
 const OTHER_OPTIONS = ["廣閱", "閱讀策略", "自學套件", "派發溫習套件", "其他"];
 const OTHER_NO_LESSON_OPTIONS = ["自學套件", "派發溫習套件"];
 const listeningMode = mode => mode === "說練習" ? "說練" : mode;
+const integerLessons = (value, minimum = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.trunc(parsed)) : minimum;
+};
+const normalizeLessonInput = (input, minimum = 0) => {
+  const value = integerLessons(input?.value, minimum);
+  if (input && input.value !== "" && input.value !== String(value)) input.value = String(value);
+  return value;
+};
+const LESSON_INPUT_SELECTOR = ".standard-lessons, .listening-lessons, .other-lessons, .dictation-lessons, .evaluation-lessons, .item-lessons";
 const otherNeedsLessons = mode => !OTHER_NO_LESSON_OPTIONS.includes(mode);
 const otherAllowsZeroLessons = mode => otherNeedsLessons(mode) && mode !== "其他";
-const otherLessons = (mode, lessons) => otherNeedsLessons(mode) ? Math.max(mode === "其他" ? 1 : 0, Number(lessons || 0)) : 0;
+const otherLessons = (mode, lessons) => otherNeedsLessons(mode) ? integerLessons(lessons, mode === "其他" ? 1 : 0) : 0;
 const combinedWith = item => item.combinedWith || (item.combined ? "閱讀" : "");
 const combinedText = item => combinedWith(item) ? `結合${combinedWith(item)}進行` : "";
 const VALUE_OPTIONS = ["堅毅", "尊重他人", "責任感", "國民身份認同", "承擔精神", "誠信", "仁愛", "守法", "同理心", "勤勞", "團結", "孝親"];
@@ -24,14 +34,15 @@ let dragState = null;
 let assessmentDragState = null;
 let listeningDragState = null;
 let otherDragState = null;
+let noteDragState = null;
 
 function load() { try { const saved = JSON.parse(localStorage.getItem(STORE)); return saved?.entries?.some(entry => entry.type === "week") ? saved : defaultPlan(); } catch { return defaultPlan(); } }
 function save() { localStorage.setItem(STORE, JSON.stringify(plan)); }
 function total(entry) {
-  const contentLessons = Object.entries(entry.categories).filter(([key]) => key !== "assessment").flatMap(([, items]) => items).reduce((sum, item) => sum + Number(item.lessons || 0), 0);
+  const contentLessons = Object.entries(entry.categories).filter(([key]) => key !== "assessment").flatMap(([, items]) => items).reduce((sum, item) => sum + integerLessons(item.lessons), 0);
   const assessment = assessmentState(entry);
-  const dictationLessons = assessment.dictation ? assessment.dictations.reduce((sum, item) => sum + Number(item.lessons || 0), 0) : 0;
-  const evaluationLessons = assessment.evaluationEnabled ? assessment.evaluations.reduce((sum, item) => sum + Number(item.lessons || 0), 0) : 0;
+  const dictationLessons = assessment.dictation ? assessment.dictations.reduce((sum, item) => sum + integerLessons(item.lessons), 0) : 0;
+  const evaluationLessons = assessment.evaluationEnabled ? assessment.evaluations.reduce((sum, item) => sum + integerLessons(item.lessons), 0) : 0;
   return contentLessons + dictationLessons + evaluationLessons;
 }
 function dateOptions(value, max, label) { return [`<option value="">${label}</option>`, ...Array.from({length:max}, (_, i) => `<option value="${i + 1}" ${String(i + 1) === String(value) ? "selected" : ""}>${i + 1}${label}</option>`)].join(""); }
@@ -47,17 +58,21 @@ function assessmentState(entry) {
   const hasDraftDictation = previous.dictationDraft && (previous.dictationDraft.frequency || previous.dictationDraft.month || previous.dictationDraft.day || previous.dictationDraft.noteText);
   const evaluations = Array.isArray(previous.evaluations) ? previous.evaluations : previous.evaluation ? [{ type: previous.evaluationType || "L評（單元評估）", lessons: previous.evaluationLessons ?? 1, month: previous.evaluationMonth || "", day: previous.evaluationDay || "", dateTBD: !!previous.evaluationDateTBD, noteText: previous.note ? previous.noteText || "" : "" }] : [];
   const evaluationEnabled = typeof previous.evaluationEnabled === "boolean" ? previous.evaluationEnabled : !!previous.evaluation || evaluations.length > 0;
-  return entry.assessment = { dictation: false, dictations: [], dictationDraft: blankDictation(), evaluationEnabled, evaluations: [], evaluationDraft: blankEvaluation(), ...previous, dictations: dictations.map(item => ({ ...blankDictation(), ...item })), dictationDraft: { ...blankDictation(), ...(hasDraftDictation ? previous.dictationDraft : unfinishedDictation) }, evaluations: evaluations.map(item => ({ ...blankEvaluation(), ...item })), evaluationDraft: { ...blankEvaluation(), ...previous.evaluationDraft } };
+  const dictationDraft = { ...blankDictation(), ...(hasDraftDictation ? previous.dictationDraft : unfinishedDictation) };
+  const evaluationDraft = { ...blankEvaluation(), ...previous.evaluationDraft };
+  dictationDraft.lessons = integerLessons(dictationDraft.lessons);
+  evaluationDraft.lessons = integerLessons(evaluationDraft.lessons);
+  return entry.assessment = { dictation: false, dictations: [], dictationDraft: blankDictation(), evaluationEnabled, evaluations: [], evaluationDraft: blankEvaluation(), ...previous, dictations: dictations.map(item => ({ ...blankDictation(), ...item, lessons: integerLessons(item.lessons) })), dictationDraft, evaluations: evaluations.map(item => ({ ...blankEvaluation(), ...item, lessons: integerLessons(item.lessons) })), evaluationDraft };
 }
 function assessmentDate(month, day) { return month && day ? `${day}/${month}` : ""; }
 function syncAssessment(entry) {
   const state = assessmentState(entry);
-  const items = [...(state.dictation ? state.dictations : []).map(item => { const name = item.frequency.trim() ? `默書（${item.frequency.trim()}）` : "默書"; return { text: `${name}${assessmentDate(item.month, item.day) ? `\n日期：${assessmentDate(item.month, item.day)}` : ""}${item.noteText.trim() ? `\n${item.noteText.trim()}` : ""}`, lessons: Number(item.lessons || 0) }; }), ...(state.evaluationEnabled ? state.evaluations : []).map(item => { const date = item.dateTBD ? "待定" : assessmentDate(item.month, item.day); return { text: `${item.type}${date ? `\n日期：${date}` : ""}${item.noteText.trim() ? `\n${item.noteText.trim()}` : ""}`, lessons: Number(item.lessons || 0) }; })];
+  const items = [...(state.dictation ? state.dictations : []).map(item => { const name = item.frequency.trim() ? `默書（${item.frequency.trim()}）` : "默書"; return { text: `${name}${assessmentDate(item.month, item.day) ? `\n日期：${assessmentDate(item.month, item.day)}` : ""}${item.noteText.trim() ? `\n${item.noteText.trim()}` : ""}`, lessons: integerLessons(item.lessons) }; }), ...(state.evaluationEnabled ? state.evaluations : []).map(item => { const date = item.dateTBD ? "待定" : assessmentDate(item.month, item.day); return { text: `${item.type}${date ? `\n日期：${date}` : ""}${item.noteText.trim() ? `\n${item.noteText.trim()}` : ""}`, lessons: integerLessons(item.lessons) }; })];
   entry.categories.assessment = items.length ? items : [{ text: "／", lessons: 0 }];
 }
 function listeningItem(item) {
   const content = item.content === undefined ? (item.text === "／" ? "" : item.text || "") : item.content;
-  return { mode: listeningMode(item.mode || ""), content, lessons: Number(item.lessons ?? 1) };
+  return { mode: listeningMode(item.mode || ""), content, lessons: integerLessons(item.lessons ?? 1) };
 }
 function blankListening() { return { mode: "", content: "", lessons: 1 }; }
 function listeningState(entry) {
@@ -65,10 +80,12 @@ function listeningState(entry) {
   const legacy = (entry.categories.listening || []).filter(item => item.text !== "／").map(listeningItem);
   const items = Array.isArray(previous.items) ? previous.items : legacy;
   const notApplicable = previous.notApplicable === true || (entry.categories.listening || []).some(item => item.text === "／");
-  return entry.listening = { items: items.map(item => ({ ...blankListening(), ...item, mode: listeningMode(item.mode || "") })), draft: { ...blankListening(), ...previous.draft, mode: listeningMode(previous.draft?.mode || "") }, open: !!previous.open, notApplicable };
+  const draft = { ...blankListening(), ...previous.draft, mode: listeningMode(previous.draft?.mode || "") };
+  draft.lessons = integerLessons(draft.lessons);
+  return entry.listening = { items: items.map(item => ({ ...blankListening(), ...item, mode: listeningMode(item.mode || ""), lessons: integerLessons(item.lessons) })), draft, open: !!previous.open, notApplicable, editIndex: Number.isInteger(previous.editIndex) ? previous.editIndex : null };
 }
 function syncListening(entry, state = listeningState(entry)) {
-  entry.categories.listening = state.notApplicable ? [{ text: "／", lessons: 0 }] : state.items.map(item => ({ text: `${listeningMode(item.mode)}：${item.content.trim()}`, lessons: Number(item.lessons || 0), mode: listeningMode(item.mode), content: item.content }));
+  entry.categories.listening = state.notApplicable ? [{ text: "／", lessons: 0 }] : state.items.map(item => ({ text: `${listeningMode(item.mode)}：${item.content.trim()}`, lessons: integerLessons(item.lessons), mode: listeningMode(item.mode), content: item.content }));
 }
 function otherItem(item) {
   const rawContent = item.content === undefined ? (item.text === "／" ? "" : item.text || "") : item.content;
@@ -86,7 +103,7 @@ function otherState(entry) {
   if (!draft.combinedWith && draft.combined) draft.combinedWith = "閱讀";
   draft.lessons = otherLessons(draft.mode, draft.lessons);
   if (!otherAllowsZeroLessons(draft.mode)) draft.combinedWith = "";
-  return entry.other = { items: items.map(item => ({ ...blankOther(), ...item, lessons: otherLessons(item.mode, item.lessons), combinedWith: otherAllowsZeroLessons(item.mode) ? combinedWith(item) : "" })), draft, open: !!previous.open, notApplicable };
+  return entry.other = { items: items.map(item => ({ ...blankOther(), ...item, lessons: otherLessons(item.mode, item.lessons), combinedWith: otherAllowsZeroLessons(item.mode) ? combinedWith(item) : "" })), draft, open: !!previous.open, notApplicable, editIndex: Number.isInteger(previous.editIndex) ? previous.editIndex : null };
 }
 function syncOther(entry, state = otherState(entry)) {
   entry.categories.other = state.notApplicable ? [{ text: "／", lessons: 0 }] : state.items.map(item => ({ text: `${item.mode}：${item.content.trim()}`, lessons: !otherNeedsLessons(item.mode) || combinedWith(item) ? 0 : otherLessons(item.mode, item.lessons), mode: item.mode, content: item.content, combined: !!combinedWith(item), combinedWith: combinedWith(item) }));
@@ -132,6 +149,29 @@ function refreshValidation() {
   });
 }
 function renumber() { let number = 1; plan.entries.forEach(entry => { if (entry.type === "week") entry.week = number++; }); }
+function attachNoteDropTarget(row, targetIndex) {
+  row.ondragover = event => {
+    if (!noteDragState) return;
+    event.preventDefault();
+    const after = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+    row.classList.toggle("note-drop-before", !after);
+    row.classList.toggle("note-drop-after", after);
+  };
+  row.ondragleave = () => row.classList.remove("note-drop-before", "note-drop-after");
+  row.ondrop = event => {
+    if (!noteDragState) return;
+    event.preventDefault(); event.stopPropagation();
+    const sourceIndex = noteDragState.index;
+    const after = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+    let insertIndex = targetIndex + (after ? 1 : 0);
+    const [moved] = plan.entries.splice(sourceIndex, 1);
+    if (!moved) return;
+    if (sourceIndex < insertIndex) insertIndex -= 1;
+    plan.entries.splice(insertIndex, 0, moved);
+    noteDragState = null;
+    render();
+  };
+}
 function render() {
   const previousScroll = { x: window.scrollX, y: window.scrollY, tableX: document.querySelector(".planner-table-wrap")?.scrollLeft || 0 };
   renumber(); save();
@@ -163,7 +203,7 @@ function renderPlannerTable() {
   const teachingHeaders = CATEGORIES.slice(0, 4).map(([key, label]) => `<th class="category-${key}">${teachingHeader(key, label)}</th>`).join("");
   const [, , , , assessment, other, values] = CATEGORIES;
   const valuesHeader = `${headerLabel(values[1])}<br><span class="priority-header-note">* 本年度學校關注項目</span>`;
-  table.innerHTML = `<colgroup><col style="width:60px"><col style="width:105px"><col style="width:230px"><col style="width:155px"><col style="width:155px"><col style="width:155px"><col style="width:130px"><col style="width:165px"><col style="width:175px"></colgroup><thead><tr><th rowspan="2">循環週</th><th rowspan="2">日期</th><th colspan="4" class="teaching-content-heading">教學內容</th><th rowspan="2" class="category-assessment">${headerLabel(assessment[1])}</th><th rowspan="2" class="category-other">${headerLabel(other[1])}</th><th rowspan="2" class="category-values">${valuesHeader}</th></tr><tr>${teachingHeaders}</tr></thead><tbody></tbody>`;
+  table.innerHTML = `<colgroup><col style="width:60px"><col style="width:105px"><col style="width:230px"><col style="width:155px"><col style="width:155px"><col style="width:155px"><col style="width:175px"><col style="width:165px"><col style="width:130px"></colgroup><thead><tr><th rowspan="2">循環週</th><th rowspan="2">日期</th><th colspan="4" class="teaching-content-heading">教學內容</th><th rowspan="2" class="category-assessment">${headerLabel(assessment[1])}</th><th rowspan="2" class="category-other">${headerLabel(other[1])}</th><th rowspan="2" class="category-values">${valuesHeader}</th></tr><tr>${teachingHeaders}</tr></thead><tbody></tbody>`;
   const body = table.querySelector("tbody");
   plan.entries.forEach((entry, index) => body.append(entry.type === "week" ? renderWeekRow(entry, index) : renderNoteRow(entry, index)));
   wrap.append(table); return wrap;
@@ -176,6 +216,7 @@ function renderWeekRow(entry, index) {
   [[".start-month", "startMonth"], [".start-day", "startDay"], [".end-month", "endMonth"], [".end-day", "endDay"]].forEach(([selector, field]) => row.querySelector(selector).onchange = event => { entry[field] = event.target.value; syncDateRange(entry); render(); });
   row.querySelector(".delete-week").onclick = () => { plan.entries.splice(index, 1); render(); };
   CATEGORIES.forEach(([key, label]) => row.append(key === "assessment" ? renderAssessmentCell(entry) : key === "values" ? renderValuesCell(entry) : key === "listening" ? renderListeningCell(entry, label) : key === "other" ? renderOtherCell(entry, label) : renderCategoryCell(entry, key, label)));
+  attachNoteDropTarget(row, index);
   return row;
 }
 function renderCategoryCell(entry, key, label) {
@@ -183,15 +224,16 @@ function renderCategoryCell(entry, key, label) {
   entry.categoryForms ||= {};
   const form = entry.categoryForms[key] ||= { open: false, draft: { text: "", lessons: 1, combinedWith: "", recommended: false } };
   form.draft ||= { text: "", lessons: 1, combinedWith: "", recommended: false };
+  form.draft.lessons = integerLessons(form.draft.lessons);
   if (form.draft.recommended === undefined) form.draft.recommended = false;
   if (form.draft.combinedWith === undefined) form.draft.combinedWith = form.draft.combined ? "閱讀" : "";
   const notApplicable = entry.categories[key].some(item => item.text === "／");
   const items = entry.categories[key].filter(item => item.text !== "／");
-  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard" draggable="true" data-standard-index="${index}"><span>${RECOMMENDED_CATEGORIES.has(key) ? `<button type="button" class="toggle-recommended ${item.recommended ? "active" : ""}" data-standard-action="toggle-recommended" data-standard-index="${index}" title="${item.recommended ? "取消課程建議篇章標示" : "標示為課程建議篇章"}">${item.recommended ? "▣" : "□"}</button>` : ""}${item.recommended ? `<span class="recommended-title">${escapeHtml(item.text)}</span>` : escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div>`).join("");
+  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard" draggable="true" data-standard-index="${index}"><span>${RECOMMENDED_CATEGORIES.has(key) ? `<button type="button" class="toggle-recommended ${item.recommended ? "active" : ""}" data-standard-action="toggle-recommended" data-standard-index="${index}" title="${item.recommended ? "取消課程建議篇章標示" : "標示為課程建議篇章"}">${item.recommended ? "▣" : "□"}</button>` : ""}${item.recommended ? `<span class="recommended-title">${escapeHtml(item.text)}</span>` : escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><button type="button" class="edit-saved" data-standard-action="edit" data-standard-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div>`).join("");
   const combineField = Number(form.draft.lessons) === 0 ? `<label class="combined">結合<select class="standard-combined-with" aria-label="${label}結合方式"><option value="">選擇</option><option value="閱讀" ${form.draft.combinedWith === "閱讀" ? "selected" : ""}>閱讀</option><option value="寫作" ${form.draft.combinedWith === "寫作" ? "selected" : ""}>寫作</option></select>進行</label>` : "";
   const recommendedField = RECOMMENDED_CATEGORIES.has(key) ? `<label class="recommended-toggle"><input class="standard-recommended" type="checkbox" ${form.draft.recommended ? "checked" : ""}> 課程建議篇章</label>` : "";
-  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${form.open ? `<div class="standard-form"><textarea class="standard-text" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(form.draft.text)}</textarea><div class="lesson-line"><input class="standard-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${form.draft.lessons}" /><span>節</span></div>${combineField}${recommendedField}<button type="button" class="add-assessment" data-standard-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-standard-action="open" title="新增內容">＋</button><button class="slash" data-standard-action="slash" title="不適用（0節）">／</button></div>`;
-  const updateDraft = () => { form.draft.text = cell.querySelector(".standard-text")?.value || ""; form.draft.lessons = Math.max(0, Number(cell.querySelector(".standard-lessons")?.value || 0)); const select = cell.querySelector(".standard-combined-with"); form.draft.combinedWith = select ? select.value : ""; form.draft.recommended = !!cell.querySelector(".standard-recommended")?.checked; save(); };
+  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${form.open ? `<div class="standard-form"><textarea class="standard-text" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(form.draft.text)}</textarea><div class="lesson-line"><input class="standard-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${form.draft.lessons}" /><span>節</span></div>${combineField}${recommendedField}<button type="button" class="add-assessment" data-standard-action="add">${Number.isInteger(form.editIndex) ? "儲存修改" : "＋ 加入"}</button></div>` : ""}<div class="cell-actions"><button class="add" data-standard-action="open" title="新增內容">＋</button><button class="slash" data-standard-action="slash" title="不適用（0節）">／</button></div>`;
+  const updateDraft = () => { form.draft.text = cell.querySelector(".standard-text")?.value || ""; form.draft.lessons = normalizeLessonInput(cell.querySelector(".standard-lessons")); const select = cell.querySelector(".standard-combined-with"); form.draft.combinedWith = select ? select.value : ""; form.draft.recommended = !!cell.querySelector(".standard-recommended")?.checked; save(); };
   cell.querySelector(".standard-text")?.addEventListener("input", updateDraft);
   cell.querySelector(".standard-lessons")?.addEventListener("input", updateDraft);
   cell.querySelector(".standard-lessons")?.addEventListener("change", () => { updateDraft(); render(); });
@@ -209,13 +251,14 @@ function renderCategoryCell(entry, key, label) {
   cell.addEventListener("click", event => {
     const control = event.target.closest("[data-standard-action]"); if (!control) return;
     const action = control.dataset.standardAction;
-    if (action === "open") { form.open = true; if (entry.categories[key].length === 1 && entry.categories[key][0].text === "／") entry.categories[key] = []; render(); return; }
+    if (action === "open") { form.open = true; form.editIndex = null; form.draft = { text: "", lessons: 1, combinedWith: "", recommended: false }; if (entry.categories[key].length === 1 && entry.categories[key][0].text === "／") entry.categories[key] = []; render(); return; }
     if (action === "slash") { entry.categories[key] = [{ text: "／", lessons: 0 }]; form.open = false; render(); return; }
     if (action === "restore") { entry.categories[key] = []; form.open = true; render(); return; }
     if (action === "toggle-recommended") { const item = entry.categories[key][Number(control.dataset.standardIndex)]; if (item) item.recommended = !item.recommended; render(); return; }
+    if (action === "edit") { const index = Number(control.dataset.standardIndex); const item = entry.categories[key][index]; if (item) { form.editIndex = index; form.draft = { text: item.text, lessons: integerLessons(item.lessons), combinedWith: combinedWith(item), recommended: !!item.recommended }; form.open = true; render(); } return; }
     if (action === "copy") { const item = entry.categories[key][Number(control.dataset.standardIndex)]; if (item) entry.categories[key].push({ ...item }); render(); return; }
     if (action === "remove") { entry.categories[key].splice(Number(control.dataset.standardIndex), 1); render(); return; }
-    if (action === "add") { const text = cell.querySelector(".standard-text").value.trim(); if (!text) { alert("請先填寫內容。"); return; } const lessons = Math.max(0, Number(cell.querySelector(".standard-lessons").value)); const combinedWithValue = lessons === 0 ? cell.querySelector(".standard-combined-with")?.value || "" : ""; const recommended = RECOMMENDED_CATEGORIES.has(key) && !!cell.querySelector(".standard-recommended")?.checked; entry.categories[key].push({ text, lessons, combined: !!combinedWithValue, combinedWith: combinedWithValue, recommended }); form.draft = { text: "", lessons: 1, combinedWith: "", recommended: false }; form.open = false; render(); }
+    if (action === "add") { const text = cell.querySelector(".standard-text").value.trim(); if (!text) { alert("請先填寫內容。"); return; } const lessons = normalizeLessonInput(cell.querySelector(".standard-lessons")); const combinedWithValue = lessons === 0 ? cell.querySelector(".standard-combined-with")?.value || "" : ""; const recommended = RECOMMENDED_CATEGORIES.has(key) && !!cell.querySelector(".standard-recommended")?.checked; const item = { text, lessons, combined: !!combinedWithValue, combinedWith: combinedWithValue, recommended }; if (Number.isInteger(form.editIndex)) entry.categories[key][form.editIndex] = item; else entry.categories[key].push(item); form.editIndex = null; form.draft = { text: "", lessons: 1, combinedWith: "", recommended: false }; form.open = false; render(); }
   });
   return cell;
 }
@@ -224,13 +267,13 @@ function renderListeningCell(entry, label) {
   const state = listeningState(entry); syncListening(entry, state);
   const saved = state.notApplicable
     ? `<div class="saved-assessment not-applicable"><span>不適用</span><button type="button" data-listening-action="restore" title="改回填寫內容">✖</button></div>`
-    : state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening" draggable="true" data-listening-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div>`).join("");
+    : state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening" draggable="true" data-listening-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><button type="button" class="edit-saved" data-listening-action="edit" data-listening-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div>`).join("");
   const draft = state.draft;
-  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="listening-mode" aria-label="${label}類型"><option value="">選擇類型</option>${LISTENING_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="listening-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea><div class="lesson-line"><input class="listening-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${draft.lessons}" /><span>節</span></div><button type="button" class="add-assessment" data-listening-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-listening-action="open" title="新增聆聽／視訊／說話內容">＋</button><button class="slash" data-listening-action="slash" title="不適用（0節）">／</button></div>`;
+  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="listening-mode" aria-label="${label}類型"><option value="">選擇類型</option>${LISTENING_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="listening-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea><div class="lesson-line"><input class="listening-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${draft.lessons}" /><span>節</span></div><button type="button" class="add-assessment" data-listening-action="add">${Number.isInteger(state.editIndex) ? "儲存修改" : "＋ 加入"}</button></div>` : ""}<div class="cell-actions"><button class="add" data-listening-action="open" title="新增聆聽／視訊／說話內容">＋</button><button class="slash" data-listening-action="slash" title="不適用（0節）">／</button></div>`;
   const update = () => { syncListening(entry, state); save(); refreshValidation(); };
   cell.querySelector(".listening-mode")?.addEventListener("change", event => { state.draft.mode = event.target.value; update(); });
   cell.querySelector(".listening-content")?.addEventListener("input", event => { state.draft.content = event.target.value; update(); });
-  cell.querySelector(".listening-lessons")?.addEventListener("input", event => { state.draft.lessons = Math.max(0, Number(event.target.value)); update(); });
+  cell.querySelector(".listening-lessons")?.addEventListener("input", event => { state.draft.lessons = normalizeLessonInput(event.target); update(); });
   cell.querySelectorAll(".draggable-listening").forEach(item => {
     item.ondragstart = () => { listeningDragState = { entry, index: Number(item.dataset.listeningIndex) }; item.classList.add("dragging"); };
     item.ondragend = () => { listeningDragState = null; item.classList.remove("dragging"); };
@@ -241,15 +284,16 @@ function renderListeningCell(entry, label) {
   cell.addEventListener("click", event => {
     const control = event.target.closest("[data-listening-action]"); if (!control) return;
     const action = control.dataset.listeningAction;
-    if (action === "open") { state.open = true; state.notApplicable = false; render(); return; }
+    if (action === "open") { state.open = true; state.editIndex = null; state.draft = blankListening(); state.notApplicable = false; render(); return; }
     if (action === "slash") { state.items = []; state.notApplicable = true; state.open = false; syncListening(entry, state); render(); return; }
     if (action === "restore") { state.items = []; state.notApplicable = false; state.open = true; syncListening(entry, state); render(); return; }
     if (action === "copy") { const item = state.items[Number(control.dataset.listeningIndex)]; if (item) state.items.push({ ...item }); syncListening(entry, state); render(); return; }
+    if (action === "edit") { const index = Number(control.dataset.listeningIndex); const item = state.items[index]; if (item) { state.editIndex = index; state.draft = { ...blankListening(), ...item }; state.open = true; state.notApplicable = false; render(); } return; }
     if (action === "remove") { state.items.splice(Number(control.dataset.listeningIndex), 1); render(); return; }
     if (action === "add") {
-      const item = { mode: cell.querySelector(".listening-mode").value, content: cell.querySelector(".listening-content").value, lessons: Math.max(0, Number(cell.querySelector(".listening-lessons").value)) };
+      const item = { mode: cell.querySelector(".listening-mode").value, content: cell.querySelector(".listening-content").value, lessons: normalizeLessonInput(cell.querySelector(".listening-lessons")) };
       if (!item.mode || !item.content.trim()) { alert("請先選擇類型並填寫內容。"); return; }
-      state.items.push(item); state.draft = blankListening(); state.open = false; state.notApplicable = false; render();
+      if (Number.isInteger(state.editIndex)) state.items[state.editIndex] = item; else state.items.push(item); state.editIndex = null; state.draft = blankListening(); state.open = false; state.notApplicable = false; render();
     }
   });
   return cell;
@@ -259,12 +303,12 @@ function renderOtherCell(entry, label) {
   const state = otherState(entry); syncOther(entry, state);
   const saved = state.notApplicable
     ? `<div class="saved-assessment not-applicable"><span>不適用</span><button type="button" data-other-action="restore" title="改回填寫內容">✖</button></div>`
-    : state.items.map((item, index) => `<div class="saved-assessment saved-other draggable-other" draggable="true" data-other-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}${otherNeedsLessons(item.mode) ? `｜${combinedText(item) || `${item.lessons}節`}` : ""}</span><button type="button" class="copy-saved" data-other-action="copy" data-other-index="${index}" title="複製此項">▼</button><button type="button" data-other-action="remove" data-other-index="${index}" title="移除此項">✖</button></div>`).join("");
+    : state.items.map((item, index) => `<div class="saved-assessment saved-other draggable-other" draggable="true" data-other-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}${otherNeedsLessons(item.mode) ? `｜${combinedText(item) || `${item.lessons}節`}` : ""}</span><button type="button" class="edit-saved" data-other-action="edit" data-other-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-other-action="copy" data-other-index="${index}" title="複製此項">▼</button><button type="button" data-other-action="remove" data-other-index="${index}" title="移除此項">✖</button></div>`).join("");
   const draft = state.draft;
   const showLessons = otherNeedsLessons(draft.mode);
   const lessonField = showLessons ? `<div class="lesson-line"><input class="other-lessons" aria-label="${label}節數" type="number" min="${draft.mode === "其他" ? 1 : 0}" step="1" value="${draft.lessons}" /><span>節</span></div>` : "";
   const combineField = otherAllowsZeroLessons(draft.mode) && Number(draft.lessons) === 0 ? `<label class="combined">結合<select class="other-combined-with" aria-label="${label}結合方式"><option value="">選擇</option><option value="閱讀" ${draft.combinedWith === "閱讀" ? "selected" : ""}>閱讀</option><option value="寫作" ${draft.combinedWith === "寫作" ? "selected" : ""}>寫作</option></select>進行</label>` : "";
-  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="other-mode" aria-label="${label}類型"><option value="">選擇類型</option>${OTHER_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="other-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea>${lessonField}${combineField}<button type="button" class="add-assessment" data-other-action="add">＋ 加入</button></div>` : ""}<div class="cell-actions"><button class="add" data-other-action="open" title="新增其他內容">＋</button><button class="slash" data-other-action="slash" title="不適用（0節）">／</button></div>`;
+  cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="other-mode" aria-label="${label}類型"><option value="">選擇類型</option>${OTHER_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="other-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea>${lessonField}${combineField}<button type="button" class="add-assessment" data-other-action="add">${Number.isInteger(state.editIndex) ? "儲存修改" : "＋ 加入"}</button></div>` : ""}<div class="cell-actions"><button class="add" data-other-action="open" title="新增其他內容">＋</button><button class="slash" data-other-action="slash" title="不適用（0節）">／</button></div>`;
   const update = () => { const select = cell.querySelector(".other-combined-with"); state.draft.combinedWith = select ? select.value : ""; syncOther(entry, state); save(); refreshValidation(); };
   cell.querySelector(".other-mode")?.addEventListener("change", event => { state.draft.mode = event.target.value; state.draft.lessons = otherLessons(state.draft.mode, state.draft.lessons); if (!otherAllowsZeroLessons(state.draft.mode)) state.draft.combinedWith = ""; update(); render(); });
   cell.querySelector(".other-content")?.addEventListener("input", event => { state.draft.content = event.target.value; update(); });
@@ -281,10 +325,11 @@ function renderOtherCell(entry, label) {
   cell.addEventListener("click", event => {
     const control = event.target.closest("[data-other-action]"); if (!control) return;
     const action = control.dataset.otherAction;
-    if (action === "open") { state.open = true; state.notApplicable = false; render(); return; }
+    if (action === "open") { state.open = true; state.editIndex = null; state.draft = blankOther(); state.notApplicable = false; render(); return; }
     if (action === "slash") { state.items = []; state.notApplicable = true; state.open = false; syncOther(entry, state); render(); return; }
     if (action === "restore") { state.items = []; state.notApplicable = false; state.open = true; syncOther(entry, state); render(); return; }
     if (action === "copy") { const item = state.items[Number(control.dataset.otherIndex)]; if (item) state.items.push({ ...item }); syncOther(entry, state); render(); return; }
+    if (action === "edit") { const index = Number(control.dataset.otherIndex); const item = state.items[index]; if (item) { state.editIndex = index; state.draft = { ...blankOther(), ...item }; state.open = true; state.notApplicable = false; render(); } return; }
     if (action === "remove") { state.items.splice(Number(control.dataset.otherIndex), 1); syncOther(entry, state); render(); return; }
     if (action === "add") {
       const mode = cell.querySelector(".other-mode").value;
@@ -292,7 +337,7 @@ function renderOtherCell(entry, label) {
       const combinedWithValue = otherAllowsZeroLessons(mode) && lessons === 0 ? cell.querySelector(".other-combined-with")?.value || "" : "";
       const item = { mode, content: cell.querySelector(".other-content").value, lessons, combined: !!combinedWithValue, combinedWith: combinedWithValue };
       if (!item.mode || !item.content.trim()) { alert("請先選擇類型並填寫內容。"); return; }
-      state.items.push(item); state.draft = blankOther(); state.open = false; state.notApplicable = false; syncOther(entry, state); render();
+      if (Number.isInteger(state.editIndex)) state.items[state.editIndex] = item; else state.items.push(item); state.editIndex = null; state.draft = blankOther(); state.open = false; state.notApplicable = false; syncOther(entry, state); render();
     }
   });
   return cell;
@@ -300,14 +345,16 @@ function renderOtherCell(entry, label) {
 function renderAssessmentCell(entry) {
   const state = assessmentState(entry); syncAssessment(entry);
   const cell = document.createElement("td"); cell.className = "content-cell assessment-cell category-assessment";
-  const dictationList = state.dictations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="dictation" data-drag-index="${index}"><span>默書（${escapeHtml(item.frequency || "未填頻次")}）｜${item.lessons}節｜${escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="copy-saved" data-assessment-action="copy-dictation" data-dictation-index="${index}" title="複製此默書">▼</button><button type="button" data-assessment-action="remove-dictation" data-dictation-index="${index}" title="移除此默書">✖</button></div>`).join("");
-  const evaluationList = state.evaluations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="evaluation" data-drag-index="${index}"><span>${escapeHtml(item.type)}｜${item.lessons}節｜${item.dateTBD ? "待定" : escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="copy-saved" data-assessment-action="copy-evaluation" data-evaluation-index="${index}" title="複製此評估">▼</button><button type="button" data-assessment-action="remove-evaluation" data-evaluation-index="${index}" title="移除此評估">✖</button></div>`).join("");
+  const dictationList = state.dictations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="dictation" data-drag-index="${index}"><span>默書（${escapeHtml(item.frequency || "未填頻次")}）｜${item.lessons}節｜${escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="edit-saved" data-assessment-action="edit-dictation" data-dictation-index="${index}" title="編輯此默書">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-dictation" data-dictation-index="${index}" title="複製此默書">▼</button><button type="button" data-assessment-action="remove-dictation" data-dictation-index="${index}" title="移除此默書">✖</button></div>`).join("");
+  const evaluationList = state.evaluations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="evaluation" data-drag-index="${index}"><span>${escapeHtml(item.type)}｜${item.lessons}節｜${item.dateTBD ? "待定" : escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="edit-saved" data-assessment-action="edit-evaluation" data-evaluation-index="${index}" title="編輯此評估">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-evaluation" data-evaluation-index="${index}" title="複製此評估">▼</button><button type="button" data-assessment-action="remove-evaluation" data-evaluation-index="${index}" title="移除此評估">✖</button></div>`).join("");
   const draft = state.dictationDraft, evaluationDraft = state.evaluationDraft;
   cell.innerHTML = `<div class="saved-assessment-list">${dictationList}${evaluationList}</div><div class="assessment-block"><label><button type="button" class="dictation-check assessment-check ${state.dictation ? "checked" : ""}" data-assessment-action="dictation" role="checkbox" aria-checked="${state.dictation}">${state.dictation ? "✓" : ""}</button> 默書</label><div class="assessment-details ${state.dictation ? "" : "hidden"}"><div class="assessment-form"><label>頻次<select class="dictation-frequency" aria-label="默書頻次">${dictationFrequencyOptions(draft.frequency)}</select></label><label>節數<input class="dictation-lessons" type="number" min="0" step="1" value="${draft.lessons}" /></label><label>日期<span><select class="dictation-month">${dateOptions(draft.month, 12, "月")}</select><select class="dictation-day">${dateOptions(draft.day, 31, "日")}</select></span></label><input class="dictation-note" aria-label="默書範圍備註" placeholder="填寫範圍" value="${escapeAttr(draft.noteText)}" /><button type="button" class="add-assessment" data-assessment-action="add-dictation">＋ 加入默書</button></div></div></div><div class="assessment-block"><label><button type="button" class="assessment-check ${state.evaluationEnabled ? "checked" : ""}" data-assessment-action="evaluation" role="checkbox" aria-checked="${state.evaluationEnabled}">${state.evaluationEnabled ? "✓" : ""}</button> 評估</label><div class="assessment-details evaluation-details ${state.evaluationEnabled ? "" : "hidden"}"><div class="assessment-form"><select class="evaluation-type"><option ${evaluationDraft.type === "L評（單元評估）" ? "selected" : ""}>L評（單元評估）</option><option ${evaluationDraft.type === "寫作評估" ? "selected" : ""}>寫作評估</option><option ${evaluationDraft.type === "說話評估" ? "selected" : ""}>說話評估</option><option ${evaluationDraft.type === "聆聽評估" ? "selected" : ""}>聆聽評估</option></select><label>節數<input class="evaluation-lessons" type="number" min="0" step="1" value="${evaluationDraft.lessons}" /></label><label>日期<span><select class="evaluation-month" ${evaluationDraft.dateTBD ? "disabled" : ""}>${dateOptions(evaluationDraft.month, 12, "月")}</select><select class="evaluation-day" ${evaluationDraft.dateTBD ? "disabled" : ""}>${dateOptions(evaluationDraft.day, 31, "日")}</select></span></label><label class="tbd-label"><button type="button" class="assessment-check ${evaluationDraft.dateTBD ? "checked" : ""}" data-assessment-action="tbd" role="checkbox" aria-checked="${evaluationDraft.dateTBD}">${evaluationDraft.dateTBD ? "✓" : ""}</button> 日期待定</label><input class="assessment-note" aria-label="評估範圍備註" placeholder="填寫範圍" value="${escapeAttr(evaluationDraft.noteText)}" /><button type="button" class="add-assessment" data-assessment-action="add-evaluation">＋ 加入評估</button></div></div></div>`;
+  if (Number.isInteger(state.dictationEditIndex)) cell.querySelector('[data-assessment-action="add-dictation"]').textContent = "儲存默書修改";
+  if (Number.isInteger(state.evaluationEditIndex)) cell.querySelector('[data-assessment-action="add-evaluation"]').textContent = "儲存評估修改";
   const updateAssessment = () => { syncAssessment(entry); save(); refreshValidation(); };
-  [[".dictation-frequency", "frequency"], [".dictation-lessons", "lessons"], [".dictation-month", "month"], [".dictation-day", "day"]].forEach(([selector, field]) => cell.querySelector(selector).onchange = event => { state.dictationDraft[field] = event.target.value; updateAssessment(); });
+  [[".dictation-frequency", "frequency"], [".dictation-lessons", "lessons"], [".dictation-month", "month"], [".dictation-day", "day"]].forEach(([selector, field]) => cell.querySelector(selector).onchange = event => { state.dictationDraft[field] = field === "lessons" ? normalizeLessonInput(event.target) : event.target.value; updateAssessment(); });
   cell.querySelector(".dictation-note").oninput = event => { state.dictationDraft.noteText = event.target.value; updateAssessment(); };
-  cell.querySelectorAll(".evaluation-type, .evaluation-lessons, .evaluation-month, .evaluation-day").forEach(control => { const field = control.classList.contains("evaluation-type") ? "type" : control.classList.contains("evaluation-lessons") ? "lessons" : control.classList.contains("evaluation-month") ? "month" : "day"; control.onchange = event => { state.evaluationDraft[field] = event.target.value; updateAssessment(); }; });
+  cell.querySelectorAll(".evaluation-type, .evaluation-lessons, .evaluation-month, .evaluation-day").forEach(control => { const field = control.classList.contains("evaluation-type") ? "type" : control.classList.contains("evaluation-lessons") ? "lessons" : control.classList.contains("evaluation-month") ? "month" : "day"; control.onchange = event => { state.evaluationDraft[field] = field === "lessons" ? normalizeLessonInput(event.target) : event.target.value; updateAssessment(); }; });
   cell.querySelector(".assessment-note").oninput = event => { state.evaluationDraft.noteText = event.target.value; updateAssessment(); };
   cell.querySelectorAll(".draggable-assessment").forEach(item => {
     item.ondragstart = () => { assessmentDragState = { entry, kind: item.dataset.dragKind, index: Number(item.dataset.dragIndex) }; item.classList.add("dragging"); };
@@ -335,7 +382,7 @@ function renderValuesCell(entry) {
 function renderItem(entry, key, item, itemIndex) {
   const fragment = document.querySelector("#item-template").content.cloneNode(true); const row = fragment.querySelector(".lesson-item");
   const text = row.querySelector(".item-text"), lessons = row.querySelector(".item-lessons"), combined = row.querySelector(".item-combined-with"), priority = row.querySelector(".priority"); text.value = item.text; lessons.value = item.lessons; combined.value = combinedWith(item); lessons.disabled = !!combined.value;
-  text.oninput = event => { item.text = event.target.value; save(); }; lessons.oninput = event => { item.lessons = Math.max(0, Number(event.target.value)); render(); };
+  text.oninput = event => { item.text = event.target.value; save(); }; lessons.oninput = event => { item.lessons = normalizeLessonInput(event.target); render(); };
   combined.onchange = event => { item.combinedWith = event.target.value; item.combined = !!event.target.value; item.lessons = event.target.value ? 0 : 1; render(); };
   if (key === "values") { priority.textContent = item.priority ? "★" : "☆"; priority.classList.toggle("active", !!item.priority); priority.onclick = () => { item.priority = !item.priority; render(); }; } else { priority.remove(); }
   row.querySelector(".remove-item").onclick = () => { entry.categories[key].splice(itemIndex, 1); render(); };
@@ -344,11 +391,27 @@ function renderItem(entry, key, item, itemIndex) {
   handle.ondragend = () => { dragState = null; row.classList.remove("dragging"); };
   return row;
 }
-function renderNoteRow(entry, index) { const row = document.createElement("tr"); row.className = "note-table-row"; row.innerHTML = `<td colspan="9"><div class="note-inline"><textarea aria-label="全寬備註" placeholder="例：第一次考試（24–28/11）\n對卷日（3–4/12）">${escapeHtml(entry.note || "")}</textarea><button title="刪除此備註列">×</button></div></td>`; row.querySelector("textarea").oninput = event => { entry.note = event.target.value; save(); }; row.querySelector("button").onclick = () => { plan.entries.splice(index, 1); render(); }; return row; }
+function renderNoteRow(entry, index) {
+  const row = document.createElement("tr"); row.className = "note-table-row";
+  row.innerHTML = `<td colspan="9"><div class="note-inline"><button type="button" class="note-drag-handle" draggable="true" title="拖拉移動備註列" aria-label="拖拉移動備註列">⠿</button><textarea aria-label="全寬備註" placeholder="例：第一次考試（24–28/11）\n對卷日（3–4/12）">${escapeHtml(entry.note || "")}</textarea><button type="button" class="delete-note" title="刪除此備註列">×</button></div></td>`;
+  row.querySelector("textarea").oninput = event => { entry.note = event.target.value; save(); };
+  row.querySelector(".delete-note").onclick = () => { plan.entries.splice(index, 1); render(); };
+  const handle = row.querySelector(".note-drag-handle");
+  handle.ondragstart = event => { noteDragState = { index }; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", "note-row"); row.classList.add("note-dragging"); };
+  handle.ondragend = () => { noteDragState = null; row.classList.remove("note-dragging"); document.querySelectorAll(".note-drop-before, .note-drop-after").forEach(target => target.classList.remove("note-drop-before", "note-drop-after")); };
+  attachNoteDropTarget(row, index);
+  return row;
+}
 function escapeHtml(value) { return String(value).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 function escapeAttr(value) { return escapeHtml(value); }
 function chooseLocalTemplate() { return new Promise(resolve => { const input = document.querySelector("#template-file"); input.value = ""; input.onchange = () => resolve(input.files?.[0] || null); input.click(); }); }
-async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立檔案…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; const { exportDocx } = await import("./docx-export.js?v=browser-c5"); await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載檔案"; } }
+async function download() { const errors = allIssues(); if (errors.length && !confirm(`表格尚有 ${errors.length} 項未完成資料。是否仍要下載未完成表格？`)) return; const button = document.querySelector("#download-docx"); button.disabled = true; button.textContent = "正在建立檔案…"; try { const localTemplate = location.protocol === "file:" ? await chooseLocalTemplate() : null; if (location.protocol === "file:" && !localTemplate) return; const { exportDocx } = await import("./docx-export.js?v=browser-c7"); await exportDocx(plan, `${currentFilename()}.docx`, localTemplate); } catch (error) { alert(error?.message || "瀏覽器未能建立 Word 檔案。"); } finally { button.disabled = false; button.textContent = "下載檔案"; } }
+document.addEventListener("beforeinput", event => {
+  if (event.target.matches?.(LESSON_INPUT_SELECTOR) && event.data && !/^\d+$/.test(event.data)) event.preventDefault();
+});
+document.addEventListener("input", event => {
+  if (event.target.matches?.(LESSON_INPUT_SELECTOR)) normalizeLessonInput(event.target, event.target.classList.contains("other-lessons") && event.target.min === "1" ? 1 : 0);
+}, true);
 ["year", "semester", "grade", "teacher"].forEach(key => document.querySelector(`#${key}`).oninput = event => { plan.meta[key] = event.target.value; render(); });
 document.querySelector("#add-week").onclick = () => { plan.entries.push(week(0)); render(); };
 document.querySelector("#add-note").onclick = () => { plan.entries.push({ type: "note", note: "" }); render(); };
@@ -365,15 +428,17 @@ document.querySelector("#entries").addEventListener("click", event => {
   if (control.dataset.assessmentAction === "dictation") { state.dictation = !state.dictation; state.notApplicable = false; }
   if (control.dataset.assessmentAction === "evaluation") state.evaluationEnabled = !state.evaluationEnabled;
   if (control.dataset.assessmentAction === "add-dictation") {
-    const draft = { frequency: cell.querySelector(".dictation-frequency").value, lessons: cell.querySelector(".dictation-lessons").value, month: cell.querySelector(".dictation-month").value, day: cell.querySelector(".dictation-day").value, noteText: cell.querySelector(".dictation-note").value };
+    const draft = { frequency: cell.querySelector(".dictation-frequency").value, lessons: normalizeLessonInput(cell.querySelector(".dictation-lessons")), month: cell.querySelector(".dictation-month").value, day: cell.querySelector(".dictation-day").value, noteText: cell.querySelector(".dictation-note").value };
     if (!draft.frequency || !draft.month || !draft.day) { alert("請先選擇默書頻次及日期。"); return; }
-    state.dictations.push(draft); state.dictationDraft = blankDictation();
+    if (Number.isInteger(state.dictationEditIndex)) state.dictations[state.dictationEditIndex] = draft; else state.dictations.push(draft); state.dictationEditIndex = null; state.dictationDraft = blankDictation();
   }
   if (control.dataset.assessmentAction === "add-evaluation") {
-    const draft = { type: cell.querySelector(".evaluation-type").value, lessons: cell.querySelector(".evaluation-lessons").value, month: cell.querySelector(".evaluation-month").value, day: cell.querySelector(".evaluation-day").value, dateTBD: state.evaluationDraft.dateTBD, noteText: cell.querySelector(".assessment-note").value };
+    const draft = { type: cell.querySelector(".evaluation-type").value, lessons: normalizeLessonInput(cell.querySelector(".evaluation-lessons")), month: cell.querySelector(".evaluation-month").value, day: cell.querySelector(".evaluation-day").value, dateTBD: state.evaluationDraft.dateTBD, noteText: cell.querySelector(".assessment-note").value };
     if (!draft.dateTBD && (!draft.month || !draft.day)) { alert("請先選擇評估日期或勾選日期待定。"); return; }
-    state.evaluations.push(draft); state.evaluationDraft = blankEvaluation();
+    if (Number.isInteger(state.evaluationEditIndex)) state.evaluations[state.evaluationEditIndex] = draft; else state.evaluations.push(draft); state.evaluationEditIndex = null; state.evaluationDraft = blankEvaluation();
   }
+  if (control.dataset.assessmentAction === "edit-dictation") { const index = Number(control.dataset.dictationIndex); const item = state.dictations[index]; if (item) { state.dictation = true; state.dictationEditIndex = index; state.dictationDraft = { ...blankDictation(), ...item }; } }
+  if (control.dataset.assessmentAction === "edit-evaluation") { const index = Number(control.dataset.evaluationIndex); const item = state.evaluations[index]; if (item) { state.evaluationEnabled = true; state.evaluationEditIndex = index; state.evaluationDraft = { ...blankEvaluation(), ...item }; } }
   if (control.dataset.assessmentAction === "copy-dictation") { const item = state.dictations[Number(control.dataset.dictationIndex)]; if (item) state.dictations.push({ ...item }); }
   if (control.dataset.assessmentAction === "copy-evaluation") { const item = state.evaluations[Number(control.dataset.evaluationIndex)]; if (item) state.evaluations.push({ ...item }); }
   if (control.dataset.assessmentAction === "remove-dictation") state.dictations.splice(Number(control.dataset.dictationIndex), 1);

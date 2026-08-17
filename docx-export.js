@@ -6,6 +6,10 @@ if (!JSZip) {
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const OTHER_REMINDER_MODES = new Set(["自學套件", "派發溫習套件"]);
+const integerLessons = value => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+};
 const text = (node) => node ? Array.from(node.getElementsByTagNameNS(W_NS, "t")).map(item => item.textContent).join("") : "";
 const direct = (node, localName) => Array.from(node.childNodes).filter(item => item.nodeType === Node.ELEMENT_NODE && item.namespaceURI === W_NS && item.localName === localName);
 const w = (document, name) => document.createElementNS(W_NS, `w:${name}`);
@@ -92,7 +96,7 @@ function createRecommendedContentParagraph(document, sourceCell, items) {
     else {
       appendMultilineText(document, paragraph, runProperties, value, !!item.recommended);
       appendBreak(document, paragraph, runProperties);
-      appendMultilineText(document, paragraph, runProperties, item.combined || item.combinedWith ? "（結合閱讀／寫作進行）" : `（${Number(item.lessons || 0)}節）`);
+      appendMultilineText(document, paragraph, runProperties, item.combined || item.combinedWith ? "（結合閱讀／寫作進行）" : `（${integerLessons(item.lessons)}節）`);
     }
     if (index < records.length - 1) { appendBreak(document, paragraph, runProperties); appendBreak(document, paragraph, runProperties); }
   });
@@ -109,7 +113,7 @@ function cellText(items, { showLessons = true, category = "" } = {}) {
   const output = [];
   for (const item of items || []) {
     const value = String(item.text || "").trim() || "／";
-    const lessons = Number(item.lessons || 0);
+    const lessons = integerLessons(item.lessons);
     const marker = item.priority ? "*" : "";
     if (value === "／") output.push("／");
     else if (!showLessons) output.push(`${value}${marker}`);
@@ -125,8 +129,8 @@ function assessmentText(entry) {
   const dictations = assessment.dictation ? assessment.dictations || [] : [];
   const evaluations = assessment.evaluationEnabled ? assessment.evaluations || [] : [];
   const records = [
-    ...dictations.map(item => `默書（${item.frequency || "未填頻次"}）\n日期：${item.month && item.day ? `${item.day}/${item.month}` : "未填日期"}${item.noteText?.trim() ? `\n${item.noteText.trim()}` : ""}\n（${Number(item.lessons || 0)}節）`),
-    ...evaluations.map(item => `${item.type || "評估"}\n日期：${item.dateTBD ? "待定" : item.month && item.day ? `${item.day}/${item.month}` : "未填日期"}${item.noteText?.trim() ? `\n${item.noteText.trim()}` : ""}\n（${Number(item.lessons || 0)}節）`),
+    ...dictations.map(item => `默書（${item.frequency || "未填頻次"}）\n日期：${item.month && item.day ? `${item.day}/${item.month}` : "未填日期"}${item.noteText?.trim() ? `\n${item.noteText.trim()}` : ""}\n（${integerLessons(item.lessons)}節）`),
+    ...evaluations.map(item => `${item.type || "評估"}\n日期：${item.dateTBD ? "待定" : item.month && item.day ? `${item.day}/${item.month}` : "未填日期"}${item.noteText?.trim() ? `\n${item.noteText.trim()}` : ""}\n（${integerLessons(item.lessons)}節）`),
   ];
   return records.join("\n\n") || "／";
 }
