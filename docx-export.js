@@ -188,7 +188,7 @@ function fillTemplate(document, header, plan) {
   const firstParagraph = direct(body, "p")[0];
   if (firstParagraph) replaceParagraph(document, firstParagraph, `年級：${plan.meta.grade || ""}\t\t\t\t教師：${plan.meta.teacher || ""}`);
   const headerParagraphs = direct(header.getElementsByTagNameNS(W_NS, "hdr")[0], "p");
-  if (headerParagraphs[1]) replaceParagraph(header, headerParagraphs[1], `${fullYear(plan.meta.year)}${plan.meta.semester || ""}中文科教學進度簡表`, true);
+  if (headerParagraphs[1]) replaceParagraph(header, headerParagraphs[1], `${fullYear(plan.meta.year)}${plan.meta.grade || ""}${plan.meta.semester || ""}中文科教學進度簡表`, true);
 
   const weekRows = [];
   const noteRows = [];
