@@ -57,6 +57,16 @@ const DATE_SCHEDULES = {
     { startMonth: "6", startDay: "11", endMonth: "6", endDay: "18" },
   ],
 };
+const DATE_SCHEDULE_NOTES = {
+  "2627-first": {
+    afterWeek: 9,
+    text: "小二至小六第一次考試 1st Exam ( 23 — 27 / 11 )\n對卷日 Exam papers checking day ( 2 — 3 / 12 )",
+  },
+  "2627-second": {
+    afterWeek: 5,
+    text: "小六第二次考試 2nd Exam ( 15 — 19 / 3 )\n小一至小六說話考試 Speaking assessment ( 22 — 23 / 3 )\n小六對卷日 P.6 Exam papers checking day ( 24 / 3 )",
+  },
+};
 const emptyCategories = () => Object.fromEntries(CATEGORIES.map(([key]) => [key, []]));
 const week = (number) => ({ type: "week", week: number, date: "", startMonth: "", startDay: "", endMonth: "", endDay: "", categories: emptyCategories(), assessment: { dictation: false, dictationFrequency: "", evaluationEnabled: false, evaluations: [], notApplicable: false } });
 const defaultPlan = () => ({ meta: { year: "", semester: "", grade: "", teacher: "" }, dateSchedule: { applied: false, key: "" }, entries: Array.from({ length: 13 }, (_, i) => week(i + 1)) });
@@ -460,6 +470,14 @@ function renderItem(entry, key, item, itemIndex) {
   handle.ondragend = () => { dragState = null; row.classList.remove("dragging"); };
   return row;
 }
+function insertDateScheduleNote(key) {
+  const noteConfig = DATE_SCHEDULE_NOTES[key];
+  if (!noteConfig) return;
+  plan.entries = plan.entries.filter(entry => !entry.autoNoteKey);
+  const weekIndex = plan.entries.findIndex(entry => entry.type === "week" && entry.week === noteConfig.afterWeek);
+  if (weekIndex === -1) return;
+  plan.entries.splice(weekIndex + 1, 0, { type: "note", note: noteConfig.text, autoNoteKey: key });
+}
 function renderNoteRow(entry, index) {
   const row = document.createElement("tr"); row.className = "note-table-row";
   row.dataset.entryIndex = index;
@@ -495,6 +513,7 @@ function applyDateSchedule(key, label) {
     Object.assign(entry, dates);
     syncDateRange(entry);
   });
+  insertDateScheduleNote(key);
   plan.dateSchedule = { applied: true, key };
   render();
 }
