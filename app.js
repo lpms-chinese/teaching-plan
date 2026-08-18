@@ -27,8 +27,35 @@ const VALUE_OPTIONS = ["堅毅", "尊重他人", "責任感", "國民身份認�
 const SECURITY_OPTIONS = ["政治安全", "軍事安全", "國土安全", "經濟安全", "金融安全", "文化安全", "社會安全", "科技安全", "網絡安全", "糧食安全", "生態安全", "資源安全", "核安全", "海外利益安全", "太空安全", "深海安全", "極地安全", "生物安全", "人工智能安全", "數據安全"];
 const STORE = "teaching-progress-plan-browser-v1";
 const DATE_SCHEDULES = {
-  "2627-first": null,
-  "2627-second": null,
+  "2627-first": [
+    { startMonth: "9", startDay: "4", endMonth: "9", endDay: "11" },
+    { startMonth: "9", startDay: "14", endMonth: "9", endDay: "21" },
+    { startMonth: "9", startDay: "22", endMonth: "9", endDay: "29" },
+    { startMonth: "9", startDay: "30", endMonth: "10", endDay: "8" },
+    { startMonth: "10", startDay: "9", endMonth: "10", endDay: "16" },
+    { startMonth: "10", startDay: "20", endMonth: "10", endDay: "27" },
+    { startMonth: "10", startDay: "28", endMonth: "11", endDay: "4" },
+    { startMonth: "11", startDay: "5", endMonth: "11", endDay: "12" },
+    { startMonth: "11", startDay: "13", endMonth: "11", endDay: "20" },
+    { startMonth: "11", startDay: "30", endMonth: "12", endDay: "10" },
+    { startMonth: "12", startDay: "11", endMonth: "12", endDay: "18" },
+    { startMonth: "12", startDay: "21", endMonth: "1", endDay: "8" },
+    { startMonth: "1", startDay: "11", endMonth: "1", endDay: "18" },
+  ],
+  "2627-second": [
+    { startMonth: "1", startDay: "20", endMonth: "1", endDay: "27" },
+    { startMonth: "1", startDay: "28", endMonth: "2", endDay: "17" },
+    { startMonth: "2", startDay: "18", endMonth: "3", endDay: "5" },
+    { startMonth: "3", startDay: "8", endMonth: "3", endDay: "15" },
+    { startMonth: "3", startDay: "16", endMonth: "3", endDay: "25" },
+    { startMonth: "4", startDay: "8", endMonth: "4", endDay: "16" },
+    { startMonth: "4", startDay: "19", endMonth: "4", endDay: "27" },
+    { startMonth: "4", startDay: "28", endMonth: "5", endDay: "5" },
+    { startMonth: "5", startDay: "6", endMonth: "5", endDay: "17" },
+    { startMonth: "5", startDay: "18", endMonth: "5", endDay: "25" },
+    { startMonth: "5", startDay: "26", endMonth: "6", endDay: "10" },
+    { startMonth: "6", startDay: "11", endMonth: "6", endDay: "18" },
+  ],
 };
 const emptyCategories = () => Object.fromEntries(CATEGORIES.map(([key]) => [key, []]));
 const week = (number) => ({ type: "week", week: number, date: "", startMonth: "", startDay: "", endMonth: "", endDay: "", categories: emptyCategories(), assessment: { dictation: false, dictationFrequency: "", evaluationEnabled: false, evaluations: [], notApplicable: false } });
@@ -459,6 +486,8 @@ document.querySelector("#add-note").onclick = () => { plan.entries.push({ type: 
 function applyDateSchedule(key, label) {
   const schedule = DATE_SCHEDULES[key];
   if (!schedule) { alert(`「${label}」日期檔尚未提供。收到 Jason 檔案後，系統便可一鍵輸入循環週及默書日期。`); return; }
+  const hasExistingDates = plan.entries.some(entry => entry.type === "week" && (entry.startMonth || entry.startDay || entry.endMonth || entry.endDay));
+  if (hasExistingDates && !confirm(`會覆蓋現有的循環週日期，並鎖定循環週排序。確定套用「${label}」日期嗎？`)) return;
   // 日期檔會於收到後放入 DATE_SCHEDULES；套用成功後固定循環週的排序。
   schedule.forEach((dates, index) => {
     const entry = plan.entries.filter(item => item.type === "week")[index];
