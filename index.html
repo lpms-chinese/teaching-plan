@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>中文科教學進度規劃工具</title>
-    <link rel="stylesheet" href="styles.css?v=20260817c" />
+    <link rel="stylesheet" href="styles.css?v=20260818c" />
   </head>
   <body>
     <main class="shell">
@@ -23,6 +23,8 @@
         <p class="filename">下載檔名：<span id="filename-preview">請先填寫文件資料</span></p>
       </section>
       <section class="toolbar">
+        <button id="apply-2627-first" class="secondary date-import">一鍵輸入 26-27年上學期日期</button>
+        <button id="apply-2627-second" class="secondary date-import">一鍵輸入 26-27年下學期日期</button>
         <button id="add-week" class="secondary">＋ 新增循環週</button>
         <button id="add-note" class="secondary">插入備註列</button>
         <p class="autosave-notice" role="status">● 已自動儲存在本機瀏覽器</p>
@@ -38,6 +40,6 @@
     <template id="item-template"><div class="lesson-item"><span class="drag-handle" title="拖拉此項到另一個欄目">⠿</span><div class="item-body"><input class="item-text" placeholder="填寫內容" /><div class="lesson-line"><input class="item-lessons" type="number" min="0" step="1" value="1" aria-label="課節數" /><span>節</span><button class="priority" title="本年度學校關注項目">☆</button><button class="remove-item" title="刪除此項">×</button></div><label class="combined">結合<select class="item-combined-with"><option value="">選擇</option><option value="閱讀">閱讀</option><option value="寫作">寫作</option></select>進行</label></div></div></template>
     <input id="template-file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
 <script src="jszip.min.js"></script>
-<script type="module" src="app.js?v=browser-c10"></script>
+<script type="module" src="app.js?v=browser-c15"></script>
   </body>
 </html>

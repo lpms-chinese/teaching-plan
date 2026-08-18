@@ -26,18 +26,23 @@ const combinedText = item => combinedWith(item) ? `結合${combinedWith(item)}�
 const VALUE_OPTIONS = ["堅毅", "尊重他人", "責任感", "國民身份認同", "承擔精神", "誠信", "仁愛", "守法", "同理心", "勤勞", "團結", "孝親"];
 const SECURITY_OPTIONS = ["政治安全", "軍事安全", "國土安全", "經濟安全", "金融安全", "文化安全", "社會安全", "科技安全", "網絡安全", "糧食安全", "生態安全", "資源安全", "核安全", "海外利益安全", "太空安全", "深海安全", "極地安全", "生物安全", "人工智能安全", "數據安全"];
 const STORE = "teaching-progress-plan-browser-v1";
+const DATE_SCHEDULES = {
+  "2627-first": null,
+  "2627-second": null,
+};
 const emptyCategories = () => Object.fromEntries(CATEGORIES.map(([key]) => [key, []]));
 const week = (number) => ({ type: "week", week: number, date: "", startMonth: "", startDay: "", endMonth: "", endDay: "", categories: emptyCategories(), assessment: { dictation: false, dictationFrequency: "", evaluationEnabled: false, evaluations: [], notApplicable: false } });
-const defaultPlan = () => ({ meta: { year: "", semester: "", grade: "", teacher: "" }, entries: Array.from({ length: 13 }, (_, i) => week(i + 1)) });
+const defaultPlan = () => ({ meta: { year: "", semester: "", grade: "", teacher: "" }, dateSchedule: { applied: false, key: "" }, entries: Array.from({ length: 13 }, (_, i) => week(i + 1)) });
 let plan = load();
 let dragState = null;
 let assessmentDragState = null;
 let listeningDragState = null;
 let otherDragState = null;
-let noteDragState = null;
+let entryDragState = null;
 
-function load() { try { const saved = JSON.parse(localStorage.getItem(STORE)); return saved?.entries?.some(entry => entry.type === "week") ? saved : defaultPlan(); } catch { return defaultPlan(); } }
+function load() { try { const saved = JSON.parse(localStorage.getItem(STORE)); if (!saved?.entries?.some(entry => entry.type === "week")) return defaultPlan(); saved.dateSchedule ||= { applied: false, key: "" }; return saved; } catch { return defaultPlan(); } }
 function save() { localStorage.setItem(STORE, JSON.stringify(plan)); }
+function isDateScheduleLocked() { return plan.dateSchedule?.applied === true; }
 function total(entry) {
   const contentLessons = Object.entries(entry.categories).filter(([key]) => key !== "assessment").flatMap(([, items]) => items).reduce((sum, item) => sum + integerLessons(item.lessons), 0);
   const assessment = assessmentState(entry);
@@ -149,28 +154,63 @@ function refreshValidation() {
   });
 }
 function renumber() { let number = 1; plan.entries.forEach(entry => { if (entry.type === "week") entry.week = number++; }); }
-function attachNoteDropTarget(row, targetIndex) {
-  row.ondragover = event => {
-    if (!noteDragState) return;
+function clearEntryDragStyles() {
+  document.querySelectorAll(".entry-drop-before, .entry-drop-after").forEach(target => target.classList.remove("entry-drop-before", "entry-drop-after"));
+}
+
+function moveEntry(sourceIndex, targetIndex, after) {
+  if (isDateScheduleLocked() && plan.entries[sourceIndex]?.type === "week") return;
+  let insertIndex = targetIndex + (after ? 1 : 0);
+  const [moved] = plan.entries.splice(sourceIndex, 1);
+  if (!moved) return;
+  if (sourceIndex < insertIndex) insertIndex -= 1;
+  plan.entries.splice(insertIndex, 0, moved);
+  render();
+}
+
+function attachEntryDragHandle(handle, row, index) {
+  handle.onkeydown = event => {
+    if (event.key === "ArrowUp" && index > 0) {
+      event.preventDefault();
+      moveEntry(index, index - 1, false);
+    } else if (event.key === "ArrowDown" && index < plan.entries.length - 1) {
+      event.preventDefault();
+      moveEntry(index, index + 1, true);
+    }
+  };
+  handle.onpointerdown = event => {
+    if (event.button !== 0) return;
     event.preventDefault();
-    const after = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
-    row.classList.toggle("note-drop-before", !after);
-    row.classList.toggle("note-drop-after", after);
+    handle.setPointerCapture?.(event.pointerId);
+    entryDragState = { index, pointerId: event.pointerId, targetIndex: null, after: false };
+    row.classList.add("entry-row-dragging");
   };
-  row.ondragleave = () => row.classList.remove("note-drop-before", "note-drop-after");
-  row.ondrop = event => {
-    if (!noteDragState) return;
-    event.preventDefault(); event.stopPropagation();
-    const sourceIndex = noteDragState.index;
-    const after = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
-    let insertIndex = targetIndex + (after ? 1 : 0);
-    const [moved] = plan.entries.splice(sourceIndex, 1);
-    if (!moved) return;
-    if (sourceIndex < insertIndex) insertIndex -= 1;
-    plan.entries.splice(insertIndex, 0, moved);
-    noteDragState = null;
-    render();
+
+  handle.onpointermove = event => {
+    if (!entryDragState || entryDragState.pointerId !== event.pointerId) return;
+    const targetRow = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-entry-index]");
+    clearEntryDragStyles();
+    if (!targetRow) {
+      entryDragState.targetIndex = null;
+      return;
+    }
+    const targetIndex = Number(targetRow.dataset.entryIndex);
+    const after = event.clientY > targetRow.getBoundingClientRect().top + targetRow.getBoundingClientRect().height / 2;
+    targetRow.classList.add(after ? "entry-drop-after" : "entry-drop-before");
+    entryDragState.targetIndex = targetIndex;
+    entryDragState.after = after;
   };
+
+  const finishDrag = event => {
+    if (!entryDragState || entryDragState.pointerId !== event.pointerId) return;
+    const { index: sourceIndex, targetIndex, after } = entryDragState;
+    entryDragState = null;
+    row.classList.remove("entry-row-dragging");
+    clearEntryDragStyles();
+    if (targetIndex !== null && (targetIndex !== sourceIndex || after)) moveEntry(sourceIndex, targetIndex, after);
+  };
+  handle.onpointerup = finishDrag;
+  handle.onpointercancel = finishDrag;
 }
 function render() {
   const previousScroll = { x: window.scrollX, y: window.scrollY, tableX: document.querySelector(".planner-table-wrap")?.scrollLeft || 0 };
@@ -212,11 +252,13 @@ function renderWeekRow(entry, index) {
   const row = document.createElement("tr"); row.className = "week-row";
   row.dataset.entryIndex = index;
   const totalLessons = total(entry);
-  row.innerHTML = `<th class="week-number" scope="row"><strong>${entry.week}</strong><span class="week-status ${totalLessons === 8 ? "valid" : "invalid"}">${totalLessons}/8節</span><button class="delete-week" title="刪除此循環週">×</button></th><td class="date-cell"><label>開始<span><select class="start-month" aria-label="第${entry.week}循環週開始月份">${dateOptions(entry.startMonth, 12, "月")}</select><select class="start-day" aria-label="第${entry.week}循環週開始日">${dateOptions(entry.startDay, 31, "日")}</select></span></label><label>結束<span><select class="end-month" aria-label="第${entry.week}循環週結束月份">${dateOptions(entry.endMonth, 12, "月")}</select><select class="end-day" aria-label="第${entry.week}循環週結束日">${dateOptions(entry.endDay, 31, "日")}</select></span></label><small>${escapeHtml(entry.date)}</small></td>`;
+  const datesLocked = isDateScheduleLocked();
+  const dragHint = datesLocked ? "已套用循環週日期，不能移動週次" : "拖拉移動循環週；聚焦後可用上下方向鍵";
+  row.innerHTML = `<th class="week-number" scope="row"><button type="button" class="week-drag-handle ${datesLocked ? "locked" : ""}" ${datesLocked ? "disabled" : ""} title="${dragHint}" aria-label="${datesLocked ? `第${entry.week}循環週已鎖定排序` : `拖拉移動第${entry.week}循環週；可用上下方向鍵移動`}">⠿</button><strong>${entry.week}</strong><span class="week-status ${totalLessons === 8 ? "valid" : "invalid"}">${totalLessons}/8節</span><button class="delete-week" title="刪除此循環週">×</button></th><td class="date-cell"><label>開始<span><select class="start-month" aria-label="第${entry.week}循環週開始月份">${dateOptions(entry.startMonth, 12, "月")}</select><select class="start-day" aria-label="第${entry.week}循環週開始日">${dateOptions(entry.startDay, 31, "日")}</select></span></label><label>結束<span><select class="end-month" aria-label="第${entry.week}循環週結束月份">${dateOptions(entry.endMonth, 12, "月")}</select><select class="end-day" aria-label="第${entry.week}循環週結束日">${dateOptions(entry.endDay, 31, "日")}</select></span></label><small>${escapeHtml(entry.date)}</small></td>`;
   [[".start-month", "startMonth"], [".start-day", "startDay"], [".end-month", "endMonth"], [".end-day", "endDay"]].forEach(([selector, field]) => row.querySelector(selector).onchange = event => { entry[field] = event.target.value; syncDateRange(entry); render(); });
   row.querySelector(".delete-week").onclick = () => { plan.entries.splice(index, 1); render(); };
+  if (!datesLocked) attachEntryDragHandle(row.querySelector(".week-drag-handle"), row, index);
   CATEGORIES.forEach(([key, label]) => row.append(key === "assessment" ? renderAssessmentCell(entry) : key === "values" ? renderValuesCell(entry) : key === "listening" ? renderListeningCell(entry, label) : key === "other" ? renderOtherCell(entry, label) : renderCategoryCell(entry, key, label)));
-  attachNoteDropTarget(row, index);
   return row;
 }
 function renderCategoryCell(entry, key, label) {
@@ -229,7 +271,7 @@ function renderCategoryCell(entry, key, label) {
   if (form.draft.combinedWith === undefined) form.draft.combinedWith = form.draft.combined ? "閱讀" : "";
   const notApplicable = entry.categories[key].some(item => item.text === "／");
   const items = entry.categories[key].filter(item => item.text !== "／");
-  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard" draggable="true" data-standard-index="${index}"><span>${RECOMMENDED_CATEGORIES.has(key) ? `<button type="button" class="toggle-recommended ${item.recommended ? "active" : ""}" data-standard-action="toggle-recommended" data-standard-index="${index}" title="${item.recommended ? "取消課程建議篇章標示" : "標示為課程建議篇章"}">${item.recommended ? "▣" : "□"}</button>` : ""}${item.recommended ? `<span class="recommended-title">${escapeHtml(item.text)}</span>` : escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><button type="button" class="edit-saved" data-standard-action="edit" data-standard-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div>`).join("");
+  const saved = notApplicable ? `<div class="saved-assessment standard-saved not-applicable"><span>不適用</span><button type="button" data-standard-action="restore" title="改回填寫內容">✖</button></div>` : items.map((item, index) => `<div class="saved-assessment standard-saved saved-${key} draggable-standard has-item-actions" draggable="true" data-standard-index="${index}"><span class="saved-item-text">${item.recommended ? `<span class="recommended-title">${escapeHtml(item.text)}</span>` : escapeHtml(item.text)}｜${combinedText(item) || `${item.lessons}節`}</span><div class="saved-item-actions">${RECOMMENDED_CATEGORIES.has(key) ? `<button type="button" class="toggle-recommended ${item.recommended ? "active" : ""}" data-standard-action="toggle-recommended" data-standard-index="${index}" title="${item.recommended ? "取消課程建議篇章標示" : "標示為課程建議篇章"}">${item.recommended ? "▣" : "□"}</button>` : ""}<button type="button" class="edit-saved" data-standard-action="edit" data-standard-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-standard-action="copy" data-standard-index="${index}" title="複製此項">▼</button><button type="button" data-standard-action="remove" data-standard-index="${index}" title="移除此項">✖</button></div></div>`).join("");
   const combineField = Number(form.draft.lessons) === 0 ? `<label class="combined">結合<select class="standard-combined-with" aria-label="${label}結合方式"><option value="">選擇</option><option value="閱讀" ${form.draft.combinedWith === "閱讀" ? "selected" : ""}>閱讀</option><option value="寫作" ${form.draft.combinedWith === "寫作" ? "selected" : ""}>寫作</option></select>進行</label>` : "";
   const recommendedField = RECOMMENDED_CATEGORIES.has(key) ? `<label class="recommended-toggle"><input class="standard-recommended" type="checkbox" ${form.draft.recommended ? "checked" : ""}> 課程建議篇章</label>` : "";
   cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${form.open ? `<div class="standard-form"><textarea class="standard-text" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(form.draft.text)}</textarea><div class="lesson-line"><input class="standard-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${form.draft.lessons}" /><span>節</span></div>${combineField}${recommendedField}<button type="button" class="add-assessment" data-standard-action="add">${Number.isInteger(form.editIndex) ? "儲存修改" : "＋ 加入"}</button></div>` : ""}<div class="cell-actions"><button class="add" data-standard-action="open" title="新增內容">＋</button><button class="slash" data-standard-action="slash" title="不適用（0節）">／</button></div>`;
@@ -267,7 +309,7 @@ function renderListeningCell(entry, label) {
   const state = listeningState(entry); syncListening(entry, state);
   const saved = state.notApplicable
     ? `<div class="saved-assessment not-applicable"><span>不適用</span><button type="button" data-listening-action="restore" title="改回填寫內容">✖</button></div>`
-    : state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening" draggable="true" data-listening-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><button type="button" class="edit-saved" data-listening-action="edit" data-listening-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div>`).join("");
+    : state.items.map((item, index) => `<div class="saved-assessment listening-saved saved-listening draggable-listening has-item-actions" draggable="true" data-listening-index="${index}"><span class="saved-item-text">${escapeHtml(item.mode)}：${escapeHtml(item.content)}｜${item.lessons}節</span><div class="saved-item-actions"><button type="button" class="edit-saved" data-listening-action="edit" data-listening-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-listening-action="copy" data-listening-index="${index}" title="複製此項">▼</button><button type="button" data-listening-action="remove" data-listening-index="${index}" title="移除此項">✖</button></div></div>`).join("");
   const draft = state.draft;
   cell.innerHTML = `<div class="saved-assessment-list">${saved}</div>${state.open ? `<div class="listening-form"><select class="listening-mode" aria-label="${label}類型"><option value="">選擇類型</option>${LISTENING_OPTIONS.map(option => `<option value="${option}" ${draft.mode === option ? "selected" : ""}>${option}</option>`).join("")}</select><textarea class="listening-content" aria-label="${label}內容" placeholder="填寫內容">${escapeHtml(draft.content)}</textarea><div class="lesson-line"><input class="listening-lessons" aria-label="${label}節數" type="number" min="0" step="1" value="${draft.lessons}" /><span>節</span></div><button type="button" class="add-assessment" data-listening-action="add">${Number.isInteger(state.editIndex) ? "儲存修改" : "＋ 加入"}</button></div>` : ""}<div class="cell-actions"><button class="add" data-listening-action="open" title="新增聆聽／視訊／說話內容">＋</button><button class="slash" data-listening-action="slash" title="不適用（0節）">／</button></div>`;
   const update = () => { syncListening(entry, state); save(); refreshValidation(); };
@@ -303,7 +345,7 @@ function renderOtherCell(entry, label) {
   const state = otherState(entry); syncOther(entry, state);
   const saved = state.notApplicable
     ? `<div class="saved-assessment not-applicable"><span>不適用</span><button type="button" data-other-action="restore" title="改回填寫內容">✖</button></div>`
-    : state.items.map((item, index) => `<div class="saved-assessment saved-other draggable-other" draggable="true" data-other-index="${index}"><span>${escapeHtml(item.mode)}：${escapeHtml(item.content)}${otherNeedsLessons(item.mode) ? `｜${combinedText(item) || `${item.lessons}節`}` : ""}</span><button type="button" class="edit-saved" data-other-action="edit" data-other-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-other-action="copy" data-other-index="${index}" title="複製此項">▼</button><button type="button" data-other-action="remove" data-other-index="${index}" title="移除此項">✖</button></div>`).join("");
+    : state.items.map((item, index) => `<div class="saved-assessment saved-other draggable-other has-item-actions" draggable="true" data-other-index="${index}"><span class="saved-item-text">${escapeHtml(item.mode)}：${escapeHtml(item.content)}${otherNeedsLessons(item.mode) ? `｜${combinedText(item) || `${item.lessons}節`}` : ""}</span><div class="saved-item-actions"><button type="button" class="edit-saved" data-other-action="edit" data-other-index="${index}" title="編輯此項">✎</button><button type="button" class="copy-saved" data-other-action="copy" data-other-index="${index}" title="複製此項">▼</button><button type="button" data-other-action="remove" data-other-index="${index}" title="移除此項">✖</button></div></div>`).join("");
   const draft = state.draft;
   const showLessons = otherNeedsLessons(draft.mode);
   const lessonField = showLessons ? `<div class="lesson-line"><input class="other-lessons" aria-label="${label}節數" type="number" min="${draft.mode === "其他" ? 1 : 0}" step="1" value="${draft.lessons}" /><span>節</span></div>` : "";
@@ -345,8 +387,8 @@ function renderOtherCell(entry, label) {
 function renderAssessmentCell(entry) {
   const state = assessmentState(entry); syncAssessment(entry);
   const cell = document.createElement("td"); cell.className = "content-cell assessment-cell category-assessment";
-  const dictationList = state.dictations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="dictation" data-drag-index="${index}"><span>默書（${escapeHtml(item.frequency || "未填頻次")}）｜${item.lessons}節｜${escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="edit-saved" data-assessment-action="edit-dictation" data-dictation-index="${index}" title="編輯此默書">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-dictation" data-dictation-index="${index}" title="複製此默書">▼</button><button type="button" data-assessment-action="remove-dictation" data-dictation-index="${index}" title="移除此默書">✖</button></div>`).join("");
-  const evaluationList = state.evaluations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment" draggable="true" data-drag-kind="evaluation" data-drag-index="${index}"><span>${escapeHtml(item.type)}｜${item.lessons}節｜${item.dateTBD ? "待定" : escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><button type="button" class="edit-saved" data-assessment-action="edit-evaluation" data-evaluation-index="${index}" title="編輯此評估">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-evaluation" data-evaluation-index="${index}" title="複製此評估">▼</button><button type="button" data-assessment-action="remove-evaluation" data-evaluation-index="${index}" title="移除此評估">✖</button></div>`).join("");
+  const dictationList = state.dictations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment has-item-actions" draggable="true" data-drag-kind="dictation" data-drag-index="${index}"><span class="saved-item-text">默書（${escapeHtml(item.frequency || "未填頻次")}）｜${item.lessons}節｜${escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><div class="saved-item-actions"><button type="button" class="edit-saved" data-assessment-action="edit-dictation" data-dictation-index="${index}" title="編輯此默書">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-dictation" data-dictation-index="${index}" title="複製此默書">▼</button><button type="button" data-assessment-action="remove-dictation" data-dictation-index="${index}" title="移除此默書">✖</button></div></div>`).join("");
+  const evaluationList = state.evaluations.map((item, index) => `<div class="saved-assessment saved-assessment-item draggable-assessment has-item-actions" draggable="true" data-drag-kind="evaluation" data-drag-index="${index}"><span class="saved-item-text">${escapeHtml(item.type)}｜${item.lessons}節｜${item.dateTBD ? "待定" : escapeHtml(assessmentDate(item.month, item.day) || "未填日期")}${item.noteText.trim() ? `｜${escapeHtml(item.noteText.trim())}` : ""}</span><div class="saved-item-actions"><button type="button" class="edit-saved" data-assessment-action="edit-evaluation" data-evaluation-index="${index}" title="編輯此評估">✎</button><button type="button" class="copy-saved" data-assessment-action="copy-evaluation" data-evaluation-index="${index}" title="複製此評估">▼</button><button type="button" data-assessment-action="remove-evaluation" data-evaluation-index="${index}" title="移除此評估">✖</button></div></div>`).join("");
   const draft = state.dictationDraft, evaluationDraft = state.evaluationDraft;
   cell.innerHTML = `<div class="saved-assessment-list">${dictationList}${evaluationList}</div><div class="assessment-block"><label><button type="button" class="dictation-check assessment-check ${state.dictation ? "checked" : ""}" data-assessment-action="dictation" role="checkbox" aria-checked="${state.dictation}">${state.dictation ? "✓" : ""}</button> 默書</label><div class="assessment-details ${state.dictation ? "" : "hidden"}"><div class="assessment-form"><label>頻次<select class="dictation-frequency" aria-label="默書頻次">${dictationFrequencyOptions(draft.frequency)}</select></label><label>節數<input class="dictation-lessons" type="number" min="0" step="1" value="${draft.lessons}" /></label><label>日期<span><select class="dictation-month">${dateOptions(draft.month, 12, "月")}</select><select class="dictation-day">${dateOptions(draft.day, 31, "日")}</select></span></label><input class="dictation-note" aria-label="默書範圍備註" placeholder="填寫範圍" value="${escapeAttr(draft.noteText)}" /><button type="button" class="add-assessment" data-assessment-action="add-dictation">＋ 加入默書</button></div></div></div><div class="assessment-block"><label><button type="button" class="assessment-check ${state.evaluationEnabled ? "checked" : ""}" data-assessment-action="evaluation" role="checkbox" aria-checked="${state.evaluationEnabled}">${state.evaluationEnabled ? "✓" : ""}</button> 評估</label><div class="assessment-details evaluation-details ${state.evaluationEnabled ? "" : "hidden"}"><div class="assessment-form"><select class="evaluation-type"><option ${evaluationDraft.type === "L評（單元評估）" ? "selected" : ""}>L評（單元評估）</option><option ${evaluationDraft.type === "寫作評估" ? "selected" : ""}>寫作評估</option><option ${evaluationDraft.type === "說話評估" ? "selected" : ""}>說話評估</option><option ${evaluationDraft.type === "聆聽評估" ? "selected" : ""}>聆聽評估</option></select><label>節數<input class="evaluation-lessons" type="number" min="0" step="1" value="${evaluationDraft.lessons}" /></label><label>日期<span><select class="evaluation-month" ${evaluationDraft.dateTBD ? "disabled" : ""}>${dateOptions(evaluationDraft.month, 12, "月")}</select><select class="evaluation-day" ${evaluationDraft.dateTBD ? "disabled" : ""}>${dateOptions(evaluationDraft.day, 31, "日")}</select></span></label><label class="tbd-label"><button type="button" class="assessment-check ${evaluationDraft.dateTBD ? "checked" : ""}" data-assessment-action="tbd" role="checkbox" aria-checked="${evaluationDraft.dateTBD}">${evaluationDraft.dateTBD ? "✓" : ""}</button> 日期待定</label><input class="assessment-note" aria-label="評估範圍備註" placeholder="填寫範圍" value="${escapeAttr(evaluationDraft.noteText)}" /><button type="button" class="add-assessment" data-assessment-action="add-evaluation">＋ 加入評估</button></div></div></div>`;
   if (Number.isInteger(state.dictationEditIndex)) cell.querySelector('[data-assessment-action="add-dictation"]').textContent = "儲存默書修改";
@@ -393,13 +435,12 @@ function renderItem(entry, key, item, itemIndex) {
 }
 function renderNoteRow(entry, index) {
   const row = document.createElement("tr"); row.className = "note-table-row";
-  row.innerHTML = `<td colspan="9"><div class="note-inline"><button type="button" class="note-drag-handle" draggable="true" title="拖拉移動備註列" aria-label="拖拉移動備註列">⠿</button><textarea aria-label="全寬備註" placeholder="例：第一次考試（24–28/11）\n對卷日（3–4/12）">${escapeHtml(entry.note || "")}</textarea><button type="button" class="delete-note" title="刪除此備註列">×</button></div></td>`;
+  row.dataset.entryIndex = index;
+  row.innerHTML = `<td colspan="9"><div class="note-inline"><button type="button" class="note-drag-handle" title="拖拉移動備註列；聚焦後可用上下方向鍵" aria-label="拖拉移動備註列；可用上下方向鍵移動">⠿</button><textarea aria-label="全寬備註" placeholder="例：第一次考試（24–28/11）\n對卷日（3–4/12）">${escapeHtml(entry.note || "")}</textarea><button type="button" class="delete-note" title="刪除此備註列">×</button></div></td>`;
   row.querySelector("textarea").oninput = event => { entry.note = event.target.value; save(); };
   row.querySelector(".delete-note").onclick = () => { plan.entries.splice(index, 1); render(); };
   const handle = row.querySelector(".note-drag-handle");
-  handle.ondragstart = event => { noteDragState = { index }; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", "note-row"); row.classList.add("note-dragging"); };
-  handle.ondragend = () => { noteDragState = null; row.classList.remove("note-dragging"); document.querySelectorAll(".note-drop-before, .note-drop-after").forEach(target => target.classList.remove("note-drop-before", "note-drop-after")); };
-  attachNoteDropTarget(row, index);
+  attachEntryDragHandle(handle, row, index);
   return row;
 }
 function escapeHtml(value) { return String(value).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
@@ -415,6 +456,21 @@ document.addEventListener("input", event => {
 ["year", "semester", "grade", "teacher"].forEach(key => document.querySelector(`#${key}`).oninput = event => { plan.meta[key] = event.target.value; render(); });
 document.querySelector("#add-week").onclick = () => { plan.entries.push(week(0)); render(); };
 document.querySelector("#add-note").onclick = () => { plan.entries.push({ type: "note", note: "" }); render(); };
+function applyDateSchedule(key, label) {
+  const schedule = DATE_SCHEDULES[key];
+  if (!schedule) { alert(`「${label}」日期檔尚未提供。收到 Jason 檔案後，系統便可一鍵輸入循環週及默書日期。`); return; }
+  // 日期檔會於收到後放入 DATE_SCHEDULES；套用成功後固定循環週的排序。
+  schedule.forEach((dates, index) => {
+    const entry = plan.entries.filter(item => item.type === "week")[index];
+    if (!entry) return;
+    Object.assign(entry, dates);
+    syncDateRange(entry);
+  });
+  plan.dateSchedule = { applied: true, key };
+  render();
+}
+document.querySelector("#apply-2627-first").onclick = () => applyDateSchedule("2627-first", "26-27年上學期");
+document.querySelector("#apply-2627-second").onclick = () => applyDateSchedule("2627-second", "26-27年下學期");
 document.querySelector("#clear").onclick = () => { if (confirm("確定要清除目前草稿嗎？")) { plan = defaultPlan(); render(); } };
 document.querySelector("#download-docx").onclick = () => download();
 document.querySelector("#entries").addEventListener("click", event => {
